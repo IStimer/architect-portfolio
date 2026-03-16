@@ -1,0 +1,122 @@
+@use "../abstracts/variables" as *;
+
+/* Hide native scrollbar */
+html {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+body {
+    color: #333;
+    font-weight: 400;
+    background: #fff;
+    text-transform: uppercase;
+    font-family: var(--font-secondary);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+:root {
+    --default-padding: 5vw;
+    --spacer-3xs: 4px;
+    --spacer-2xs: 5px;
+    --spacer-xs: 10px;
+    --hit-area: 8px;
+    --spacer-s: 20px;
+    --spacer-sm: 30px;
+    --spacer-md: 40px;
+    --spacer-m: 50px;
+    --spacer-l: 100px;
+    --spacer-xl: 200px;
+    --spacer-xxl: 300px;
+    --font-primary: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-secondary: "Courier New", monospace;
+}
+
+h1,
+h2 {
+    font-weight: 500;
+    font-family: var(--font-primary);
+}
+
+h3,
+h4,
+h5,
+h6 {
+    font-weight: 500;
+    font-family: var(--font-secondary);
+}
+
+p {
+    font-weight: 300;
+    font-family: var(--font-secondary);
+}
+
+main {
+    box-sizing: border-box;
+}
+
+.flex {
+    display: flex;
+}
+
+.hidden {
+    visibility: hidden;
+    opacity: 0;
+}
+
+.no-scroll {
+    overflow: hidden;
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+@keyframes move-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0.5;
+        transform: translateY(-35%);
+    }
+}
+
+@keyframes move-in {
+    from {
+        clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);
+    }
+    to {
+        clip-path: polygon(0 100%, 100% 100%, 100% 0, 0 0);
+    }
+}
+
+::view-transition-old(root) {
+    animation: 0.8s cubic-bezier(0.87, 0, 0.13, 1) both move-out;
+}
+
+::view-transition-new(root) {
+    animation: 0.8s cubic-bezier(0.87, 0, 0.13, 1) both move-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none !important;
+    }
+}

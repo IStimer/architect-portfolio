@@ -1,0 +1,35 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "back": "Retour",
+    "about": "\u00c0 propos",
+    "aboutLabel": "\u00c0 propos",
+    "view": "Voir",
+    "discoverProjects": "D\u00e9couvrir mes projets",
+    "discoverProject": "D\u00e9couvrir le projet",
+    "menu": "menu",
+    "previous": "Pr\u00e9c\u00e9dent",
+    "next": "Suivant"
+  },
+  "aria": {
+    "viewProject": "Voir le projet",
+    "projectPreview": "Aper\u00e7u du projet",
+    "aboutPage": "Page \u00e0 propos",
+    "previousProject": "Projet pr\u00e9c\u00e9dent",
+    "nextProject": "Projet suivant",
+    "projects": "Projets"
+  },
+  "labels": {
+    "client": "Client",
+    "role": "R\u00f4le",
+    "stack": "Technologies",
+    "type": "Type",
+    "scroll": "Scroll",
+    "live": "Live",
+    "github": "GitHub",
+    "nextProject": "Projet suivant"
+  },
+  "errors": {
+    "projectNotFound": "Projet non trouv\u00e9"
+  }
+}

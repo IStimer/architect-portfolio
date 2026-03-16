@@ -1,0 +1,49 @@
+.custom-cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 15px;
+    height: 15px;
+    pointer-events: none;
+    z-index: 99999;
+
+    &__corner {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+
+        &--tl {
+            top: 0;
+            left: 0;
+            border-top: 1px solid #fff;
+            border-left: 1px solid #fff;
+        }
+
+        &--tr {
+            top: 0;
+            right: 0;
+            border-top: 1px solid #fff;
+            border-right: 1px solid #fff;
+        }
+
+        &--bl {
+            bottom: 0;
+            left: 0;
+            border-bottom: 1px solid #fff;
+            border-left: 1px solid #fff;
+        }
+
+        &--br {
+            bottom: 0;
+            right: 0;
+            border-bottom: 1px solid #fff;
+            border-right: 1px solid #fff;
+        }
+    }
+}
+
+@media (pointer: coarse) {
+    .custom-cursor {
+        display: none;
+    }
+}

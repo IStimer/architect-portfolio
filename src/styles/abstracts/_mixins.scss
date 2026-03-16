@@ -1,0 +1,116 @@
+@mixin responsive-font-size($size-vw: 1.5vw, $min-size: 14px, $max-size: 24px) {
+  // Wrap in & {} to opt into new CSS behavior and silence deprecation warning
+  & {
+    font-size: $size-vw;
+  }
+
+  @media screen and (max-width: 768px) {
+    font-size: max($min-size, $size-vw);
+  }
+
+  @media screen and (min-width: 1920px) {
+    font-size: min($max-size, $size-vw);
+  }
+}
+
+@mixin text-3xs {
+  @include responsive-font-size(0.5vw, 8px, 12px);
+}
+
+@mixin text-2xs {
+  @include responsive-font-size(0.75vw, 10px, 14px);
+}
+
+@mixin text-xs {
+  @include responsive-font-size(1vw, 12px, 16px);
+}
+
+@mixin text-sm {
+  @include responsive-font-size(1.25vw, 14px, 18px);
+}
+
+@mixin text-base {
+  @include responsive-font-size(1.5vw, 16px, 24px);
+}
+
+@mixin text-lg {
+  @include responsive-font-size(2vw, 18px, 32px);
+}
+
+@mixin text-xl {
+  @include responsive-font-size(2.5vw, 20px, 40px);
+}
+
+@mixin text-2xl {
+  @include responsive-font-size(3vw, 24px, 48px);
+}
+
+@mixin text-3xl {
+  @include responsive-font-size(4vw, 32px, 64px);
+}
+
+@mixin text-4xl {
+  @include responsive-font-size(5vw, 40px, 80px);
+}
+
+@mixin text-5xl {
+  @include responsive-font-size(6vw, 48px, 96px);
+}
+
+@mixin text-6xl {
+  @include responsive-font-size(8vw, 64px, 120px);
+}
+
+@mixin text-6xxl {
+    @include responsive-font-size(10vw, 72px, 160px);
+}
+
+@mixin text-7xl {
+  @include responsive-font-size(12vw, 80px, 200px);
+}
+
+@mixin text-8xl {
+  @include responsive-font-size(15vw, 96px, 280px);
+}
+
+@mixin corner-brackets($size: 8px, $thickness: 1px, $color: #fff, $offset-x: 0px, $offset-y: 0px) {
+  &::before {
+    content: '';
+    position: absolute;
+    inset: $offset-y $offset-x;
+    pointer-events: none;
+    background:
+      linear-gradient($color, $color) top left / $size $thickness no-repeat,
+      linear-gradient($color, $color) top left / $thickness $size no-repeat,
+      linear-gradient($color, $color) top right / $size $thickness no-repeat,
+      linear-gradient($color, $color) top right / $thickness $size no-repeat,
+      linear-gradient($color, $color) bottom left / $size $thickness no-repeat,
+      linear-gradient($color, $color) bottom left / $thickness $size no-repeat,
+      linear-gradient($color, $color) bottom right / $size $thickness no-repeat,
+      linear-gradient($color, $color) bottom right / $thickness $size no-repeat;
+    animation: bracketsFadeIn 0.5s ease forwards;
+  }
+}
+
+@keyframes bracketsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@mixin mobile {
+  @media (min-width: 768px) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (min-width: 1024px) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: 1440px) {
+    @content;
+  }
+}

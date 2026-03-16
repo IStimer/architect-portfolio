@@ -1,0 +1,35 @@
+{
+  "nav": {
+    "home": "Home",
+    "back": "Back",
+    "about": "About",
+    "aboutLabel": "About",
+    "view": "View",
+    "discoverProjects": "Discover my projects",
+    "discoverProject": "Discover the project",
+    "menu": "menu",
+    "previous": "Prev",
+    "next": "Next"
+  },
+  "aria": {
+    "viewProject": "View project",
+    "projectPreview": "Project preview",
+    "aboutPage": "About page",
+    "previousProject": "Previous project",
+    "nextProject": "Next project",
+    "projects": "Projects"
+  },
+  "labels": {
+    "client": "Client",
+    "role": "Role",
+    "stack": "Stack",
+    "type": "Type",
+    "scroll": "Scroll",
+    "live": "Live",
+    "github": "GitHub",
+    "nextProject": "Next project"
+  },
+  "errors": {
+    "projectNotFound": "Project not found"
+  }
+}

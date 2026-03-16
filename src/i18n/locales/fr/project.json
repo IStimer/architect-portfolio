@@ -1,0 +1,20 @@
+{
+  "seo": {
+    "descriptionTemplate": "{{description}} \u2014 Client : {{client}} | Technologies : {{stack}}"
+  },
+  "gallery": {
+    "imageAlt": "{{title}} - image {{number}}"
+  },
+  "projects": {
+    "project-one": {
+      "subtitle": "Sous-titre du projet un",
+      "description": "Description de votre premier projet.",
+      "contractType": "Freelance"
+    },
+    "project-two": {
+      "subtitle": "Sous-titre du projet deux",
+      "description": "Description de votre second projet.",
+      "contractType": "Freelance"
+    }
+  }
+}

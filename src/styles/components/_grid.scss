@@ -1,0 +1,118 @@
+@use "../abstracts/mixins" as *;
+@use "../abstracts/variables" as *;
+
+// Grid overlay container (superposition like Figma)
+.grid-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  opacity: 1;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 10;
+
+  &__rows,
+  &__columns {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    left: 30px;
+    right: 0;
+    height: 1px;
+    width: calc(100% - 60px);
+    background-color: rgba(255, 255, 255, 0.1);
+    z-index: 10000;
+    pointer-events: none;
+  }
+
+  &::before {
+    top: calc(30px + ((100vh - 60px - 60px) / 2) * 0.3333);
+  }
+
+  &::after {
+    bottom: calc(30px + ((100vh - 60px - 60px) / 2) * 0.3333);
+  }
+}
+
+// Grid container base
+.grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+
+  &--rows-overlay {
+    grid-template-rows: 1fr 1fr;
+    grid-auto-flow: column;
+    height: 100vh;
+    padding: 30px;
+    row-gap: 60px;
+    box-sizing: border-box;
+
+    .grid__item {
+      background-color: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  &--columns-overlay {
+    grid-template-columns: 1fr 1fr 1fr;
+    height: 100vh;
+    padding: 30px;
+    column-gap: 60px;
+    box-sizing: border-box;
+
+    .grid__item {
+      background-color: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.02);
+    border: 1px dashed rgba(0, 0, 0, 0.1);
+
+    &--stretch {
+      align-self: stretch;
+      justify-self: stretch;
+    }
+
+    &--center {
+      align-self: center;
+      justify-self: center;
+    }
+
+    &--start {
+      align-self: start;
+      justify-self: start;
+    }
+
+    &--end {
+      align-self: end;
+      justify-self: end;
+    }
+  }
+
+  &--overlay {
+    opacity: 1;
+    mix-blend-mode: multiply;
+  }
+
+  @media (max-width: 1024px) and (min-width: 769px) {
+    &--columns-3 {
+      grid-template-columns: repeat(2, 1fr);
+      row-gap: 30px;
+    }
+  }
+}

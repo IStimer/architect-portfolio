@@ -1,0 +1,24 @@
+{
+  "seo": {
+    "title": "Accueil",
+    "description": "Portfolio — Votre description ici"
+  },
+  "intro": {
+    "welcome1": "Bienvenue \u2014 votre nom ici",
+    "welcome2": "Votre tagline ou description courte"
+  },
+  "projects": {
+    "1": {
+      "title": "Projet Un",
+      "contractType": "Freelance",
+      "category": "Web",
+      "type": "D\u00e9veloppement front-end"
+    },
+    "2": {
+      "title": "Projet Deux",
+      "contractType": "Freelance",
+      "category": "Web",
+      "type": "D\u00e9veloppement front-end"
+    }
+  }
+}

@@ -1,0 +1,138 @@
+@use "../abstracts/mixins" as *;
+
+.slider-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: 80px 1fr 25%;
+}
+
+// ---------- Minimap (left) ----------
+.slider-overlay__minimap {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 24px 8px;
+  background: #fff;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.slider-overlay__thumb {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.3s;
+  flex-shrink: 0;
+
+  &--active {
+    opacity: 1;
+  }
+
+  &:hover {
+    opacity: 0.7;
+  }
+
+  img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+// ---------- Center (canvas zone + crosshair line) ----------
+.slider-overlay__center {
+  pointer-events: none;
+  position: relative;
+}
+
+.slider-overlay__crosshair {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.slider-overlay__crosshair-title {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  padding: 4px 12px 4px 16px;
+  background: #fff;
+  font-family: var(--font-secondary);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+// ---------- Info panel (right) ----------
+.slider-overlay__panel {
+  background: #fff;
+  color: #111;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  padding: 48px;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.slider-overlay__panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slider-overlay__category {
+  @include text-2xs;
+  font-family: var(--font-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  opacity: 0.5;
+}
+
+.slider-overlay__title {
+  @include text-4xl;
+  font-family: var(--font-primary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.slider-overlay__subtitle {
+  @include text-xs;
+  font-family: var(--font-secondary);
+  opacity: 0.45;
+  margin: 0;
+  line-height: 1.4;
+  max-width: 320px;
+}
+
+.slider-overlay__counter {
+  font-family: var(--font-secondary);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  opacity: 0.35;
+  font-variant-numeric: tabular-nums;
+  margin-top: 16px;
+}
