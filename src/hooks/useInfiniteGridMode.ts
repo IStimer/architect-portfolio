@@ -68,38 +68,37 @@ export function buildLayout(
   const baseUnit = Math.min(vpW, vpH) * 0.22;
 
   const cols = 3;
+  const rows = Math.ceil(count / cols);
   const colW = vpW / cols;
+  const rowH = baseUnit * 1.5;
+
+  // Cell = one complete tile block
+  const cellW = vpW;
+  const cellH = rows * rowH;
 
   const positions: TileLayout['positions'] = [];
-  let maxY = 0;
 
   for (let i = 0; i < count; i++) {
     const col = i % cols;
+    const row = Math.floor(i / cols);
 
-    const sizeMultiplier = 0.7 + rng() * 0.7;
+    const sizeMultiplier = 0.7 + rng() * 0.5;
     const w = baseUnit * sizeMultiplier;
     const h = w * (0.65 + rng() * 0.35);
 
-    const colCenter = -vpW / 2 + colW * (col + 0.5);
-    const xJitter = (rng() - 0.5) * colW * 0.35;
+    // Position within cell, centered at origin
+    const colCenter = -cellW / 2 + colW * (col + 0.5);
+    const xJitter = (rng() - 0.5) * colW * 0.2;
     const x = colCenter + xJitter;
 
-    const row = Math.floor(i / cols);
-    const rowH = baseUnit * 1.35;
-    const yCenter = vpH / 2 - rowH * (row + 0.5);
-    const yJitter = (rng() - 0.5) * rowH * 0.35;
+    const yCenter = cellH / 2 - rowH * (row + 0.5);
+    const yJitter = (rng() - 0.5) * rowH * 0.2;
     const y = yCenter + yJitter;
 
     positions.push({ x, y, w, h, projectIndex: i });
-
-    const bottom = Math.abs(y) + h / 2;
-    if (bottom > maxY) maxY = bottom;
   }
 
-  const repeatW = vpW + baseUnit * 0.8;
-  const repeatH = maxY * 2 + baseUnit * 0.8;
-
-  return { positions, repeatW, repeatH };
+  return { positions, repeatW: cellW, repeatH: cellH };
 }
 
 // ---------- hook ----------
@@ -114,6 +113,8 @@ export const useInfiniteGridMode = ({
   skipEnterAnimation = false,
 }: InfiniteGridProps): GridModeHandle => {
   const meshesRef = useRef<GridMesh[]>([]);
+  const duplicateMeshesRef = useRef<Mesh[]>([]);
+  const allTilesRef = useRef<GridMesh[]>([]);
   const scrollRef = useRef({ x: 0, y: 0 });
   const targetScrollRef = useRef({ x: 0, y: 0 });
   const hoveredRef = useRef<string | null>(null);
@@ -136,14 +137,34 @@ export const useInfiniteGridMode = ({
     const layout = buildLayout(projects, viewport.width, viewport.height);
     layoutRef.current = layout;
 
+    const { repeatW, repeatH } = layout;
+
     const gridMeshes: GridMesh[] = [];
+    const duplicates: Mesh[] = [];
+    const allTiles: GridMesh[] = [];
     const raycast = new Raycast();
+
+    // Shared geometry for all tiles
+    const sharedGeometry = new Plane(gl, {
+      widthSegments: 16,
+      heightSegments: 16,
+    });
+
+    // 2×2 tiling offsets — wrapping at 2× cell keeps boundary far off-screen
+    const tileOffsets: [number, number][] = [
+      [0, 0],
+      [repeatW, 0],
+      [0, -repeatH],
+      [repeatW, -repeatH],
+    ];
 
     layout.positions.forEach(({ x, y, w, h, projectIndex }) => {
       const project = projects[projectIndex];
       const entry = textures.get(project.slug);
       if (!entry) return;
 
+      // One Program shared across all copies of this tile —
+      // hover uniforms update all copies at once
       const program = new Program(gl, {
         vertex: vertexShader,
         fragment: fragmentShader,
@@ -157,57 +178,84 @@ export const useInfiniteGridMode = ({
         transparent: true,
       });
 
-      const geometry = new Plane(gl, {
-        widthSegments: 16,
-        heightSegments: 16,
-      });
+      tileOffsets.forEach(([dx, dy], copyIdx) => {
+        const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
+        mesh.scale.set(w, h, 1);
+        const tx = x + dx;
+        const ty = y + dy;
+        mesh.position.set(tx, ty, 0);
+        mesh.setParent(scene);
 
-      const mesh = new Mesh(gl, { geometry, program });
-      mesh.scale.set(w, h, 1);
-      mesh.position.set(x, y, 0);
-      mesh.setParent(scene);
+        const tile: GridMesh = {
+          mesh,
+          program,
+          slug: project.slug,
+          tileX: tx,
+          tileY: ty,
+          cellW: w,
+          cellH: h,
+        };
 
-      gridMeshes.push({
-        mesh,
-        program,
-        slug: project.slug,
-        tileX: x,
-        tileY: y,
-        cellW: w,
-        cellH: h,
+        allTiles.push(tile);
+
+        if (copyIdx === 0) {
+          gridMeshes.push(tile);
+        } else {
+          duplicates.push(mesh);
+        }
       });
     });
 
     meshesRef.current = gridMeshes;
+    duplicateMeshesRef.current = duplicates;
+    allTilesRef.current = allTiles;
     scrollRef.current = { x: 0, y: 0 };
     targetScrollRef.current = { x: 0, y: 0 };
     velocityRef.current = { x: 0, y: 0 };
 
-    // ---- per-frame: lerp scroll + modular wrapping ----
+    // ---- per-frame: scroll + modular wrapping ----
     const tickUpdate = () => {
       if (!getContext()) return;
 
-      const lerpFactor = 0.08;
-      scrollRef.current.x += (targetScrollRef.current.x - scrollRef.current.x) * lerpFactor;
-      scrollRef.current.y += (targetScrollRef.current.y - scrollRef.current.y) * lerpFactor;
+      // Transition controller took ownership — stop ticking, remove duplicates
+      if (meshesRef.current.length === 0) {
+        duplicateMeshesRef.current.forEach((m) => m.setParent(null));
+        duplicateMeshesRef.current = [];
+        allTilesRef.current = [];
+        return;
+      }
 
-      if (!isDraggingRef.current) {
+      const currentLayout = layoutRef.current;
+      if (!currentLayout) return;
+
+      if (isDraggingRef.current) {
+        // Direct follow during drag — zero latency
+        scrollRef.current.x = targetScrollRef.current.x;
+        scrollRef.current.y = targetScrollRef.current.y;
+      } else {
+        // Smooth lerp for inertia deceleration
+        const lerpFactor = 0.12;
+        scrollRef.current.x += (targetScrollRef.current.x - scrollRef.current.x) * lerpFactor;
+        scrollRef.current.y += (targetScrollRef.current.y - scrollRef.current.y) * lerpFactor;
+
         targetScrollRef.current.x += velocityRef.current.x;
         targetScrollRef.current.y += velocityRef.current.y;
         velocityRef.current.x *= 0.95;
         velocityRef.current.y *= 0.95;
       }
 
-      const { repeatW, repeatH } = layout;
+      // Wrap at 2× cell dimensions — boundary stays well outside viewport
+      const wrapW = currentLayout.repeatW * 2;
+      const wrapH = currentLayout.repeatH * 2;
       const sx = scrollRef.current.x;
       const sy = scrollRef.current.y;
 
-      meshesRef.current.forEach((item) => {
+      allTilesRef.current.forEach((item) => {
         let px = item.tileX - sx;
         let py = item.tileY + sy;
 
-        px = ((px + repeatW / 2) % repeatW + repeatW) % repeatW - repeatW / 2;
-        py = ((py + repeatH / 2) % repeatH + repeatH) % repeatH - repeatH / 2;
+        px = ((px + wrapW / 2) % wrapW + wrapW) % wrapW - wrapW / 2;
+        py = ((py + wrapH / 2) % wrapH + wrapH) % wrapH - wrapH / 2;
 
         item.mesh.position.x = px;
         item.mesh.position.y = py;
@@ -253,17 +301,17 @@ export const useInfiniteGridMode = ({
         lastPointerRef.current = { x: e.clientX, y: e.clientY, t: now };
       }
 
-      // ---- hover raycast ----
+      // ---- hover raycast (all tiles including duplicates) ----
       const currentCtx = getContext();
       if (!currentCtx) return;
 
       raycast.castMouse(currentCtx.camera, mouseRef.current);
-      const meshList = meshesRef.current.map((m) => m.mesh);
+      const meshList = allTilesRef.current.map((m) => m.mesh);
       const hits = raycast.intersectMeshes(meshList);
 
       let foundSlug: string | null = null;
 
-      meshesRef.current.forEach((item) => {
+      allTilesRef.current.forEach((item) => {
         const isHit = hits.some((h: any) => h === item.mesh);
         if (isHit) {
           foundSlug = item.slug;
@@ -271,6 +319,7 @@ export const useInfiniteGridMode = ({
           const localY = (0.5 - e.clientY / window.innerHeight) * currentCtx.viewport.height;
           const uvX = (localX - item.mesh.position.x) / (item.mesh.scale.x as number) + 0.5;
           const uvY = (localY - item.mesh.position.y) / (item.mesh.scale.y as number) + 0.5;
+          // Program is shared across copies — updates all at once
           item.program.uniforms.uMouse.value = [
             Math.max(0, Math.min(1, uvX)),
             Math.max(0, Math.min(1, uvY)),
@@ -322,10 +371,16 @@ export const useInfiniteGridMode = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
 
+      // Always remove duplicates
+      duplicateMeshesRef.current.forEach((m) => m.setParent(null));
+      duplicateMeshesRef.current = [];
+
+      // Remove primaries (skipped if transition controller took ownership via src.length = 0)
       meshesRef.current.forEach((item) => {
         item.mesh.setParent(null);
       });
       meshesRef.current = [];
+      allTilesRef.current = [];
       layoutRef.current = null;
     };
   }, [active, texturesLoaded, getContext, projects, textures, onHover, onNavigate]);
@@ -342,15 +397,26 @@ export const useInfiniteGridMode = ({
       const newLayout = buildLayout(projects, viewport.width, viewport.height);
       layoutRef.current = newLayout;
 
-      meshesRef.current.forEach((item, i) => {
-        const pos = newLayout.positions[i];
-        if (!pos) return;
-        item.tileX = pos.x;
-        item.tileY = pos.y;
-        item.cellW = pos.w;
-        item.cellH = pos.h;
-        item.mesh.scale.set(pos.w, pos.h, 1);
-        item.program.uniforms.uMeshSize.value = [pos.w, pos.h];
+      const { repeatW, repeatH } = newLayout;
+      const tileOffsets: [number, number][] = [
+        [0, 0],
+        [repeatW, 0],
+        [0, -repeatH],
+        [repeatW, -repeatH],
+      ];
+
+      // Update all tiles: for each base position, update its 4 copies
+      newLayout.positions.forEach((pos, baseIdx) => {
+        tileOffsets.forEach(([dx, dy], copyIdx) => {
+          const tile = allTilesRef.current[baseIdx * 4 + copyIdx];
+          if (!tile) return;
+          tile.tileX = pos.x + dx;
+          tile.tileY = pos.y + dy;
+          tile.cellW = pos.w;
+          tile.cellH = pos.h;
+          tile.mesh.scale.set(pos.w, pos.h, 1);
+          tile.program.uniforms.uMeshSize.value = [pos.w, pos.h];
+        });
       });
     };
 

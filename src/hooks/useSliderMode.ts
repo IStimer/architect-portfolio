@@ -106,7 +106,7 @@ export const useSliderMode = ({
     [getContext, slidesParams]
   );
 
-  // Smooth jumpTo — shortest wrapping path, GSAP-controlled
+  // Smooth jumpTo — nearest wrapped instance, GSAP-controlled
   const jumpTo = useCallback(
     (index: number) => {
       if (jumpTweenRef.current) jumpTweenRef.current.kill();
@@ -115,12 +115,9 @@ export const useSliderMode = ({
       const totalH = totalHeightRef.current;
       const current = scrollTargetRef.current;
 
-      // Shortest wrapping path
-      let diff = target - current;
-      if (totalH > 0 && Math.abs(diff) > totalH / 2) {
-        diff = diff > 0 ? diff - totalH : diff + totalH;
-      }
-      const finalTarget = current + diff;
+      // Find the nearest wrapped instance: target + k*totalH closest to current
+      const k = totalH > 0 ? Math.round((current - target) / totalH) : 0;
+      const finalTarget = target + k * totalH;
 
       const proxy = { value: current };
       jumpTweenRef.current = gsap.to(proxy, {
