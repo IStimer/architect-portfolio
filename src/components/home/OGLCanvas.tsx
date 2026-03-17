@@ -85,6 +85,7 @@ const OGLCanvas = ({
     sliderHandle,
     gridHandle,
     onTransitionComplete,
+    onIndexChange,
   });
 
   // Expose jumpTo for parent

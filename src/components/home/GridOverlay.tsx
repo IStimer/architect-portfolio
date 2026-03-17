@@ -67,6 +67,10 @@ const GridOverlay = ({ active, hoveredSlug }: GridOverlayProps) => {
 
   return (
     <div ref={containerRef} className="grid-overlay" style={{ opacity: 0 }}>
+      {/* Crosshair — same style as slider-overlay__crosshair */}
+      <div className="grid-overlay__crosshair grid-overlay__crosshair--h" />
+      <div className="grid-overlay__crosshair grid-overlay__crosshair--v" />
+
       <div ref={labelRef} className="grid-overlay__label" style={{ opacity: 0 }}>
         {project && (
           <>

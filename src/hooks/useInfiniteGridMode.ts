@@ -36,6 +36,7 @@ interface InfiniteGridProps {
 export interface GridModeHandle {
   getMeshes: () => GridMesh[];
   getLayout: () => TileLayout | null;
+  getScroll: () => { x: number; y: number };
 }
 
 // ---------- seeded PRNG (mulberry32) ----------
@@ -123,6 +124,8 @@ export const useInfiniteGridMode = ({
   const velocityRef = useRef({ x: 0, y: 0 });
   const lastPointerRef = useRef({ x: 0, y: 0, t: 0 });
   const layoutRef = useRef<TileLayout | null>(null);
+  const skipEnterAnimRef = useRef(skipEnterAnimation);
+  skipEnterAnimRef.current = skipEnterAnimation;
 
   useEffect(() => {
     const ctx = getContext();
@@ -325,7 +328,7 @@ export const useInfiniteGridMode = ({
       meshesRef.current = [];
       layoutRef.current = null;
     };
-  }, [active, texturesLoaded, getContext, projects, textures, onHover, onNavigate, skipEnterAnimation]);
+  }, [active, texturesLoaded, getContext, projects, textures, onHover, onNavigate]);
 
   // ---- resize ----
   useEffect(() => {
@@ -358,5 +361,6 @@ export const useInfiniteGridMode = ({
   return {
     getMeshes: () => meshesRef.current,
     getLayout: () => layoutRef.current,
+    getScroll: () => ({ ...scrollRef.current }),
   };
 };

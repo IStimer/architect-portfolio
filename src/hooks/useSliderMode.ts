@@ -228,6 +228,16 @@ export const useSliderMode = ({
     scrollRef.current = initialScroll;
     scrollTargetRef.current = initialScroll;
 
+    // Position slides and render to RT immediately so postfx has content
+    // from the very first main render (prevents 1-frame empty RT = white flash)
+    const totalH = cumulativeY;
+    slides.forEach((slide) => {
+      let y = slide.baseY + initialScroll;
+      y = ((y + totalH / 2) % totalH + totalH) % totalH - totalH / 2;
+      slide.mesh.position.y = y;
+    });
+    ctx.renderer.render({ scene: slidesScene, camera: ctx.camera, target: rt });
+
     // Tick
     const tick = () => {
       const curCtx = getContext();
@@ -248,6 +258,7 @@ export const useSliderMode = ({
       const totalH = totalHeightRef.current;
       if (totalH === 0) return;
 
+
       let closestIndex = 0;
       let closestDist = Infinity;
 
@@ -256,8 +267,6 @@ export const useSliderMode = ({
         y = ((y + totalH / 2) % totalH + totalH) % totalH - totalH / 2;
         slide.mesh.position.y = y;
 
-        // Parallax
-        slide.program.uniforms.u_parallax.value = y / (curCtx.viewport.height / 2);
 
         // Per-slide distortion
         const distFromCenter = Math.abs(y) / (curCtx.viewport.height / 2);

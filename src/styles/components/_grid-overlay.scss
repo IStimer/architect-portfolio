@@ -5,6 +5,26 @@
   pointer-events: none;
 }
 
+// ---------- Crosshair (same spirit as slider-overlay__crosshair) ----------
+.grid-overlay__crosshair {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.12);
+
+  &--h {
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+  }
+
+  &--v {
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+  }
+}
+
 .grid-overlay__label {
   position: fixed;
   top: 0;
