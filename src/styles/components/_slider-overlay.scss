@@ -6,50 +6,7 @@
   z-index: 1;
   pointer-events: none;
   display: grid;
-  grid-template-columns: 80px 1fr 25%;
-}
-
-// ---------- Minimap (left) ----------
-.slider-overlay__minimap {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  padding: 24px 8px;
-  background: #fff;
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
-  overflow-y: auto;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-.slider-overlay__thumb {
-  border: none;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.3;
-  transition: opacity 0.3s;
-  flex-shrink: 0;
-
-  &--active {
-    opacity: 1;
-  }
-
-  &:hover {
-    opacity: 0.7;
-  }
-
-  img {
-    width: 100%;
-    aspect-ratio: 16 / 10;
-    object-fit: cover;
-    display: block;
-  }
+  grid-template-columns: 1fr 25%;
 }
 
 // ---------- Center (canvas zone + crosshair line) ----------
@@ -89,10 +46,17 @@
   background: #fff;
   color: #111;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   pointer-events: none;
-  padding: 48px;
+  padding: 0;
   border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.slider-overlay__panel-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 48px;
 }
 
 .slider-overlay__panel-inner {
@@ -135,4 +99,54 @@
   opacity: 0.35;
   font-variant-numeric: tabular-nums;
   margin-top: 16px;
+}
+
+// ---------- Minimap (bottom of panel, infinite horizontal) ----------
+.slider-overlay__minimap {
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 12px 0;
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
+.slider-overlay__minimap-track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  will-change: transform;
+}
+
+.slider-overlay__thumb {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.3s;
+  flex-shrink: 0;
+
+  &--active {
+    opacity: 1;
+  }
+
+  &:hover {
+    opacity: 0.7;
+  }
+
+  img {
+    width: 56px;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    display: block;
+    filter: grayscale(1);
+    transition: filter 0.4s;
+  }
+
+  &--active img {
+    filter: grayscale(0);
+  }
 }

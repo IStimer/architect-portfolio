@@ -37,6 +37,10 @@ void main() {
   // Brightness boost on hover
   tex.rgb += uHover * 0.08 * smoothstep(0.4, 0.0, dist);
 
+  // Greyscale by default, colour on hover
+  float grey = dot(tex.rgb, vec3(0.2126, 0.7152, 0.0722));
+  tex.rgb = mix(vec3(grey), tex.rgb, uHover);
+
   gl_FragColor = tex;
   gl_FragColor.a *= uAlpha;
 }
