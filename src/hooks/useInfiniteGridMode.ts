@@ -174,6 +174,9 @@ export const useInfiniteGridMode = ({
           uMouse: { value: [0.5, 0.5] },
           uResolution: { value: [entry.width, entry.height] },
           uMeshSize: { value: [w, h] },
+          uAlpha: { value: 1.0 },
+          uWind: { value: 0 },
+          uWindDir: { value: [0, 0] },
         },
         transparent: true,
       });
