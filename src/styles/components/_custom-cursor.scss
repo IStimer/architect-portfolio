@@ -6,6 +6,7 @@
     height: 15px;
     pointer-events: none;
     z-index: 99999;
+    mix-blend-mode: difference;
 
     &__corner {
         position: absolute;
