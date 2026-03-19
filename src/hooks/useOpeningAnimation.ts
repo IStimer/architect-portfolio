@@ -14,33 +14,27 @@ import fragmentShader from '../shaders/slider/fragment.glsl';
 const NUM_COLS = 5;
 const CENTER_COL = 2;
 const CENTER_ROWS = 9; // matches slider WINDOW_SIZE
-const NUM_OUTER_COLS = NUM_COLS - 1; // 4 outer columns
 
 const SLIDE_W_FRAC = 0.35;
 const SLIDE_H_FRAC = 0.50;
 const SLIDE_SPACING = 0.04;
 const COL_SPACING_FRAC = 0.04;
 
-// Phase 1
 const PHASE1_DURATION = 1.0;
 const PHASE1_FADE_DURATION = 0.4;
 const PHASE1_COL_STAGGER = 0.15;
 const PHASE1_ROW_STAGGER = 0.03;
 
-// Phase 2
 const PHASE2_DURATION = 2.5;
 const PHASE2_CAMERA_Z_END = 15;
 const PHASE2_SCROLL_AMOUNT = 2.5;
 
-// Phase 3 sub-phases
-const PHASE3A_DURATION = 0.8;  // center spreads apart
-const PHASE3B_DURATION = 1.0;  // outer meshes fly into gaps
-const PHASE3C_DURATION = 1.2;  // collapse to slider + rezoom
+const PHASE3A_DURATION = 0.8;
+const PHASE3B_DURATION = 1.0;
+const PHASE3C_DURATION = 1.2;
 
 // Column scroll directions: true = scrolls UP (arrives from bottom)
 const COL_DIRECTIONS = [true, false, true, false, true];
-
-// NUM_GAPS computed dynamically inside effect based on centerCount
 
 // ── Interfaces ────────────────────────────────────────────────────
 
@@ -113,64 +107,87 @@ export const useOpeningAnimation = ({
 
     handoffRef.current = null;
 
-    // ── Dimensions at Z=5 (slider camera position) ──
+    // ── Dimensions at Z=5 ──
     const fovRad = (45 * Math.PI) / 180;
     const vp5H = 2 * Math.tan(fovRad / 2) * 5;
     const vp5W = vp5H * (window.innerWidth / window.innerHeight);
     const meshW = SLIDE_W_FRAC * vp5W;
     const meshH = SLIDE_H_FRAC * vp5H;
-    const spacing = SLIDE_SPACING * vp5H;
     const colGap = COL_SPACING_FRAC * vp5W;
-    const slideH = meshH + spacing;
+    const slideH = meshH + SLIDE_SPACING * vp5H;
 
-    // Center X (matches slider calculation)
+    // Slider X offset (accounts for minimap + panel)
     const minimapW = (80 / window.innerWidth) * vp5W;
     const panelW = vp5W * 0.25;
     const centerX = (-vp5W / 2 + minimapW + vp5W / 2 - panelW) / 2;
 
-    // Column X positions
+    // Animation starts centered on screen, shifts to centerX during rezoom
+    const animCenterX = 0;
+
     const colXs: number[] = [];
     for (let c = 0; c < NUM_COLS; c++) {
-      colXs.push(centerX + (c - CENTER_COL) * (meshW + colGap));
+      colXs.push(animCenterX + (c - CENTER_COL) * (meshW + colGap));
     }
 
-    // ── Phase 2 scroll offsets (precomputed so Phase 3 can account for them) ──
+    // ── Phase 2 scroll offsets ──
     const scrollDist = PHASE2_SCROLL_AMOUNT * slideH;
     const phase2Offsets: number[] = [];
     for (let c = 0; c < NUM_COLS; c++) {
       const dir = COL_DIRECTIONS[c] ? 1 : -1;
-      const speed = c === CENTER_COL ? 1.15 : 1.0;
+      const speed = c === CENTER_COL ? 0 : 1.0;
       phase2Offsets.push(dir * scrollDist * speed);
     }
-    // ── Project assignment — no duplicates ──
+
+    // ── Project assignment — interleaved for Phase 3 fill ──
     const half = Math.floor(CENTER_ROWS / 2);
-    const centerCount = Math.min(CENTER_ROWS, N);
-    const numGaps = Math.max(0, centerCount - 1);
+    const sliderSize = Math.min(CENTER_ROWS, N);
+    const centerCount = Math.ceil(sliderSize / 2);
+
+    // Full slider sequence: e.g. [26, 27, 28, 29, 0, 1, 2, 3, 4]
+    const sliderSequence: number[] = [];
+    for (let i = -half; i < -half + sliderSize; i++) {
+      sliderSequence.push(((i % N) + N) % N);
+    }
+
+    // Center: even-indexed positions [26, 28, 0, 2, 4]
     const centerProjectIndices: number[] = [];
-    for (let i = -half; i < -half + centerCount; i++) {
-      centerProjectIndices.push(((i % N) + N) % N);
+    for (let i = 0; i < sliderSize; i += 2) {
+      centerProjectIndices.push(sliderSequence[i]);
     }
 
-    // Remaining projects go to outer columns, distributed evenly, no duplicates
+    // Fill: odd-indexed positions [27, 29, 1, 3]
+    const gapFillProjects: number[] = [];
+    for (let i = 1; i < sliderSize; i += 2) {
+      gapFillProjects.push(sliderSequence[i]);
+    }
+
+    // Distribute remaining projects to outer columns
     const usedIndices = new Set(centerProjectIndices);
-    const remainingProjects: number[] = [];
+    const fillSet = new Set(gapFillProjects);
+    const extraProjects: number[] = [];
     for (let i = 0; i < N; i++) {
-      if (!usedIndices.has(i)) remainingProjects.push(i);
+      if (!usedIndices.has(i) && !fillSet.has(i)) extraProjects.push(i);
     }
+    extraProjects.sort((a, b) => {
+      const distA = Math.min(a, N - a);
+      const distB = Math.min(b, N - b);
+      return distB - distA;
+    });
 
-    // Compute outer rows per column based on available projects
-    const outerRowCount = Math.max(0, Math.floor(remainingProjects.length / NUM_OUTER_COLS));
-    let outerAssignIdx = 0;
     const outerProjectIndices: number[][] = [[], [], [], [], []];
-    for (let c = 0; c < NUM_COLS; c++) {
-      if (c === CENTER_COL) continue;
-      for (let r = 0; r < outerRowCount; r++) {
-        if (outerAssignIdx < remainingProjects.length) {
-          outerProjectIndices[c].push(remainingProjects[outerAssignIdx]);
-          outerAssignIdx++;
-        }
-      }
-    }
+    // Fills go to cols 1/3 (nearest center — shortest travel)
+    gapFillProjects.forEach((proj, i) => {
+      outerProjectIndices[i % 2 === 0 ? 1 : 3].push(proj);
+    });
+    // Extras round-robin: outer cols first, then inner
+    const outerColOrder = [0, 4, 1, 3];
+    extraProjects.forEach((proj, i) => {
+      outerProjectIndices[outerColOrder[i % 4]].push(proj);
+    });
+
+    const outerRowCount = Math.max(
+      ...outerProjectIndices.filter((_, c) => c !== CENTER_COL).map(a => a.length)
+    );
 
     // ── Create meshes ──
     const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
@@ -212,20 +229,19 @@ export const useOpeningAnimation = ({
     }
     for (let c = 0; c < NUM_COLS; c++) {
       if (c === CENTER_COL) continue;
-      const colRows = outerProjectIndices[c].length;
-      for (let r = 0; r < colRows; r++) {
+      for (let r = 0; r < outerProjectIndices[c].length; r++) {
         allMeshes.push(createMesh(c, r, outerProjectIndices[c][r], false));
       }
     }
 
-    const visibleSlugs = new Set(allMeshes.map((m) => m.slug));
-    markVisibleRef.current?.(visibleSlugs);
+    markVisibleRef.current?.(new Set(allMeshes.map((m) => m.slug)));
 
     const centerMeshes = allMeshes.filter((m) => m.isCenter);
     const outerMeshes = allMeshes.filter((m) => !m.isCenter);
 
     // ── Position meshes off-screen ──
     const centerRowOffset = Math.floor(centerCount / 2);
+    const outerRowOffset = Math.floor(outerRowCount / 2);
 
     centerMeshes.forEach((cm) => {
       const baseY = -(cm.row - centerRowOffset) * slideH;
@@ -234,10 +250,9 @@ export const useOpeningAnimation = ({
     });
 
     outerMeshes.forEach((cm) => {
-      const rowOffset = Math.floor(outerRowCount / 2);
-      const baseY = -(cm.row - rowOffset) * slideH;
+      const baseY = -(cm.row - outerRowOffset) * slideH;
       cm.mesh.position.x = colXs[cm.col];
-      cm.mesh.position.y = (COL_DIRECTIONS[cm.col])
+      cm.mesh.position.y = COL_DIRECTIONS[cm.col]
         ? baseY - viewport.height * 2
         : baseY + viewport.height * 2;
     });
@@ -247,36 +262,10 @@ export const useOpeningAnimation = ({
     let isComplete = false;
 
     // ═══════════════════════════════════════════════════════
-    // PHASE 1 — Columns Appear
+    // PHASE 1 — Columns slide in from off-screen
     // ═══════════════════════════════════════════════════════
 
     tl.addLabel('phase1', 0);
-
-    function animateColumnIn(meshes: ColumnMesh[], colIndex: number, colDelay: number) {
-      const rowCount = colIndex === CENTER_COL ? centerCount : outerRowCount;
-      const rowOffset = Math.floor(rowCount / 2);
-
-      meshes.forEach((cm) => {
-        const baseY = -(cm.row - rowOffset) * slideH;
-        const startY = COL_DIRECTIONS[colIndex]
-          ? baseY - viewport.height * 2
-          : baseY + viewport.height * 2;
-
-        const meshDelay = colDelay + cm.row * PHASE1_ROW_STAGGER;
-
-        tl.fromTo(cm.mesh.position,
-          { y: startY },
-          { y: baseY, duration: PHASE1_DURATION, ease: 'power3.out' },
-          `phase1+=${meshDelay}`
-        );
-
-        tl.fromTo(cm.program.uniforms.uAlpha,
-          { value: 0 },
-          { value: 1, duration: PHASE1_FADE_DURATION, ease: 'power2.out' },
-          `phase1+=${meshDelay}`
-        );
-      });
-    }
 
     const colStaggerMap = [
       PHASE1_COL_STAGGER * 2,
@@ -287,11 +276,33 @@ export const useOpeningAnimation = ({
     ];
 
     for (let c = 0; c < NUM_COLS; c++) {
-      animateColumnIn(allMeshes.filter((m) => m.col === c), c, colStaggerMap[c]);
+      const colMeshes = allMeshes.filter((m) => m.col === c);
+      const rowCount = c === CENTER_COL ? centerCount : outerRowCount;
+      const rowOff = Math.floor(rowCount / 2);
+      const colDelay = colStaggerMap[c];
+
+      colMeshes.forEach((cm) => {
+        const baseY = -(cm.row - rowOff) * slideH;
+        const startY = COL_DIRECTIONS[c]
+          ? baseY - viewport.height * 2
+          : baseY + viewport.height * 2;
+        const meshDelay = colDelay + cm.row * PHASE1_ROW_STAGGER;
+
+        tl.fromTo(cm.mesh.position,
+          { y: startY },
+          { y: baseY, duration: PHASE1_DURATION, ease: 'power3.out' },
+          `phase1+=${meshDelay}`
+        );
+        tl.fromTo(cm.program.uniforms.uAlpha,
+          { value: 0 },
+          { value: 1, duration: PHASE1_FADE_DURATION, ease: 'power2.out' },
+          `phase1+=${meshDelay}`
+        );
+      });
     }
 
     // ═══════════════════════════════════════════════════════
-    // PHASE 2 — Scroll + Dezoom
+    // PHASE 2 — Scroll + Dezoom (center col stays still)
     // ═══════════════════════════════════════════════════════
 
     const phase2Start = PHASE1_DURATION + PHASE1_COL_STAGGER * 2 + 0.2;
@@ -303,8 +314,7 @@ export const useOpeningAnimation = ({
     );
 
     for (let c = 0; c < NUM_COLS; c++) {
-      const colMeshes = allMeshes.filter((m) => m.col === c);
-      colMeshes.forEach((cm) => {
+      allMeshes.filter((m) => m.col === c).forEach((cm) => {
         tl.to(cm.mesh.position, {
           y: `+=${phase2Offsets[c]}`,
           duration: PHASE2_DURATION,
@@ -314,227 +324,137 @@ export const useOpeningAnimation = ({
     }
 
     // ═══════════════════════════════════════════════════════
-    // PHASE 3 — Choreographed merge into single column
+    // PHASE 3 — Merge all columns into one
     //
-    //   3A: Center meshes spread apart (2× spacing) to open gaps
-    //       Positions are relative to POST-Phase-2 scroll offset.
-    //   3B: Outer meshes fly into the gap slots (one per gap)
-    //       Excess outer meshes stay put (off-screen after rezoom).
-    //   3C: Center meshes collapse to final slider positions.
-    //       Fill meshes stay at gap positions (off-screen after rezoom).
-    //       Camera rezooms Z=15 → Z=5.
-    //
-    //   NO alpha/fadeout — zoom handles visibility.
+    //   3A: Center meshes spread to 2× spacing (open gaps)
+    //   3B: ALL outer meshes converge to center column
+    //       Fills land in gaps, extras extend above/below
+    //   3C: Camera rezooms Z=15→Z=5 + X-shift to centerX
+    //       Extras naturally leave viewport during rezoom
     // ═══════════════════════════════════════════════════════
 
     const phase3Start = phase2Start + PHASE2_DURATION + 0.1;
 
-    // Final slider positions (absolute, centered on y=0)
+    // Slider positions (all 9 slots)
+    const sliderRowOffset = Math.floor(sliderSize / 2);
     const sliderYs: number[] = [];
-    for (let r = 0; r < centerCount; r++) {
-      sliderYs.push(-(r - centerRowOffset) * slideH);
+    for (let r = 0; r < sliderSize; r++) {
+      sliderYs.push(-(r - sliderRowOffset) * slideH);
     }
 
-    // ── 3A: Center column spreads apart ──
-    // Instead of absolute targets, use RELATIVE offsets from current position.
-    // Each mesh moves away from the group center by an additional slideH * (distance from center row).
-    // This doubles the spacing without needing to know the absolute post-Phase-2 position.
+    // ── 3A: Center spreads apart (computed statically, center speed=0) ──
     tl.addLabel('phase3a', phase3Start);
 
-    // Snapshot all center positions at phase3a start, then compute spread targets dynamically.
-    const centerStartYs: number[] = new Array(centerCount).fill(0);
-    const centerSpreadYs: number[] = new Array(centerCount).fill(0);
-    let phase3aSnapshotDone = false;
+    // Center meshes are at baseY after Phase 1+2 (speed=0 → no scroll)
+    const centerBaseYs = centerMeshes.map((cm) => -(cm.row - centerRowOffset) * slideH);
+    const groupCenterY = centerBaseYs.reduce((a, b) => a + b, 0) / centerCount;
+    const centerSpreadYs = centerBaseYs.map((y) => groupCenterY + (y - groupCenterY) * 2);
 
-    tl.call(() => {
-      // Snapshot current positions
-      centerMeshes.forEach((cm) => {
-        centerStartYs[cm.row] = cm.mesh.position.y as number;
-      });
-      // Compute group center
-      const groupCenterY = centerStartYs.reduce((a, b) => a + b, 0) / centerCount;
-      // Spread: each mesh moves to 2× its distance from group center
-      centerMeshes.forEach((cm) => {
-        const distFromCenter = centerStartYs[cm.row] - groupCenterY;
-        centerSpreadYs[cm.row] = groupCenterY + distFromCenter * 2;
-      });
-      phase3aSnapshotDone = true;
-    }, [], 'phase3a');
-
-    centerMeshes.forEach((cm) => {
+    centerMeshes.forEach((cm, i) => {
+      const from = centerBaseYs[i];
+      const to = centerSpreadYs[i];
       const proxy = { t: 0 };
 
       tl.to(proxy, {
         t: 1,
         duration: PHASE3A_DURATION,
         ease: 'power2.inOut',
-        onUpdate: () => {
-          if (!phase3aSnapshotDone) return;
-          cm.mesh.position.y = lerp(centerStartYs[cm.row], centerSpreadYs[cm.row], proxy.t);
-        },
+        onUpdate: () => { cm.mesh.position.y = lerp(from, to, proxy.t); },
       }, 'phase3a');
     });
 
-    // ── 3B: Outer meshes fly into gap slots ──
+    // ── 3B: All outer meshes converge to center column ──
     const phase3bStart = phase3Start + PHASE3A_DURATION + 0.05;
     tl.addLabel('phase3b', phase3bStart);
 
-    // Sort outer meshes: nearest columns first
-    const outerSorted = [...outerMeshes].sort((a, b) => {
-      const dA = Math.abs(a.col - CENTER_COL) + a.row * 0.01;
-      const dB = Math.abs(b.col - CENTER_COL) + b.row * 0.01;
-      return dA - dB;
+    // Identify fill meshes for handoff
+    const outerByProject = new Map<number, ColumnMesh>();
+    outerMeshes.forEach(cm => outerByProject.set(cm.projectIndex, cm));
+
+    const fillMeshes: ColumnMesh[] = [];
+    const gapAssign: number[] = [];
+    gapFillProjects.forEach((projIdx, gapIdx) => {
+      const cm = outerByProject.get(projIdx);
+      if (cm) {
+        fillMeshes.push(cm);
+        gapAssign.push(gapIdx);
+      }
     });
 
-    // First numGaps get gap slots, rest stay put
-    const fillMeshes = outerSorted.slice(0, numGaps);
-
-    // Gap targets are computed dynamically from the spread positions (midpoints).
-    // gapAssign[idx] = which gap index (0..7) this fillMesh fills.
-    // Assign center-outward for visual balance.
-    const gapAssign: number[] = [];
-    {
-      const gapsByDist = Array.from({ length: numGaps }, (_, i) => i)
-        .sort((a, b) => {
-          // Sort by distance from center row gap (gap 3-4 is center)
-          const midGap = (numGaps - 1) / 2;
-          return Math.abs(a - midGap) - Math.abs(b - midGap);
-        });
-      for (let i = 0; i < fillMeshes.length; i++) {
-        gapAssign.push(gapsByDist[i]);
-      }
+    // Target Y: circular slider position relative to project 0
+    function projectTargetY(projectIndex: number): number {
+      let offset = projectIndex;
+      if (offset > N / 2) offset -= N;
+      return -offset * slideH;
     }
 
-    fillMeshes.forEach((cm, idx) => {
-      const gapIdx = gapAssign[idx];
-      const stagger = idx * 0.04;
+    // Sort: nearest columns first for visual flow
+    const outerByColDist = [...outerMeshes].sort((a, b) =>
+      Math.abs(a.col - CENTER_COL) - Math.abs(b.col - CENTER_COL)
+    );
+
+    // Positions computed statically — immune to GSAP/OGL state issues on replay
+    outerByColDist.forEach((cm, idx) => {
+      const targetY = projectTargetY(cm.projectIndex);
+      const baseY = -(cm.row - outerRowOffset) * slideH;
+      const expectedX = colXs[cm.col];
+      const expectedY = baseY + phase2Offsets[cm.col];
 
       const proxy = { t: 0 };
-      let startX = 0;
-      let startY = 0;
-      let targetX = centerX;
-      let targetY = 0;
 
       tl.to(proxy, {
         t: 1,
         duration: PHASE3B_DURATION,
         ease: 'power3.inOut',
         onStart: () => {
-          startX = cm.mesh.position.x as number;
-          startY = cm.mesh.position.y as number;
-          // Gap target = midpoint between spread positions of center[gapIdx] and center[gapIdx+1]
-          targetY = (centerSpreadYs[gapIdx] + centerSpreadYs[gapIdx + 1]) / 2;
-          targetX = centerX;
+          cm.mesh.position.x = expectedX;
+          cm.mesh.position.y = expectedY;
+          console.log(`[3B] proj=${cm.projectIndex + 1} col=${cm.col} start=(${expectedX.toFixed(1)},${expectedY.toFixed(1)}) target=(${animCenterX.toFixed(1)},${targetY.toFixed(1)})`);
         },
         onUpdate: () => {
-          const p = proxy.t;
-          const sinP = Math.sin(p * Math.PI);
-
-          // Bezier arc from current position to gap slot
-          const dx = targetX - startX;
-          const dy = targetY - startY;
-          const dist = Math.hypot(dx, dy) || 1;
-          const perpX = -dy / dist;
-          const perpY = dx / dist;
-          const arcOffset = dist * 0.15;
-          const cpx = (startX + targetX) / 2 + perpX * arcOffset;
-          const cpy = (startY + targetY) / 2 + perpY * arcOffset;
-
-          const inv = 1 - p;
-          cm.mesh.position.x = inv * inv * startX + 2 * inv * p * cpx + p * p * targetX;
-          cm.mesh.position.y = inv * inv * startY + 2 * inv * p * cpy + p * p * targetY;
-
-          // Subtle Z arc
-          cm.mesh.position.z = sinP * 0.12;
-
-          // Subtle rotation
-          cm.mesh.rotation.z = sinP * 0.03 * (cm.col < CENTER_COL ? 1 : -1);
-
-          // Wind effect
-          cm.program.uniforms.uWind.value = sinP * 0.5;
-          cm.program.uniforms.uWindDir.value = [dx / dist, -dy / dist];
+          cm.mesh.position.x = lerp(expectedX, animCenterX, proxy.t);
+          cm.mesh.position.y = lerp(expectedY, targetY, proxy.t);
         },
-      }, `phase3b+=${stagger}`);
+      }, `phase3b+=${idx * 0.02}`);
     });
 
-    // ── 3C: Collapse to slider positions + rezoom ──
-    const phase3cStart = phase3bStart + PHASE3B_DURATION + 0.1;
+    // ── 3C: Rezoom + X-shift to slider offset ──
+    const phase3bTotalStagger = (outerByColDist.length - 1) * 0.02;
+    const phase3cStart = phase3bStart + PHASE3B_DURATION + phase3bTotalStagger + 0.1;
     tl.addLabel('phase3c', phase3cStart);
 
-    // NO mesh removal during 3C — just zoom into the center column.
-    // Outer columns and fill meshes exit the viewport naturally as the camera zooms in.
-    // Cleanup happens only at the very end in the onComplete callback.
-
-    // Camera rezoom
     tl.to(camera.position,
       { z: 5, duration: PHASE3C_DURATION, ease: 'power3.inOut' },
       'phase3c'
     );
 
-    // Center meshes: spread positions → final slider positions (absolute y=0 centered)
-    centerMeshes.forEach((cm) => {
-      const finalY = sliderYs[cm.row];
+    // Shift all meshes from screen center to slider offset
+    const xShift = centerX - animCenterX;
+    allMeshes.forEach((cm) => {
       const proxy = { t: 0 };
-      let startY = 0;
-
+      let startX = 0;
       tl.to(proxy, {
         t: 1,
         duration: PHASE3C_DURATION,
         ease: 'power3.inOut',
-        onStart: () => { startY = cm.mesh.position.y as number; },
-        onUpdate: () => {
-          cm.mesh.position.y = lerp(startY, finalY, proxy.t);
-          cm.mesh.position.x = centerX;
-        },
-      }, 'phase3c');
-    });
-
-    // Fill meshes: follow the closing gap and compress with it
-    fillMeshes.forEach((cm, idx) => {
-      const gapIdx = gapAssign[idx];
-      const proxy = { t: 0 };
-      let topStartY = 0;
-      let botStartY = 0;
-
-      tl.to(proxy, {
-        t: 1,
-        duration: PHASE3C_DURATION,
-        ease: 'power3.inOut',
-        onStart: () => {
-          topStartY = centerMeshes[gapIdx].mesh.position.y as number;
-          botStartY = centerMeshes[gapIdx + 1].mesh.position.y as number;
-        },
-        onUpdate: () => {
-          const p = proxy.t;
-
-          // Track the midpoint between adjacent center meshes as they collapse
-          const topNow = lerp(topStartY, sliderYs[gapIdx], p);
-          const botNow = lerp(botStartY, sliderYs[gapIdx + 1], p);
-          cm.mesh.position.y = (topNow + botNow) / 2;
-          cm.mesh.position.x = centerX;
-
-          // Compress vertically as gap closes
-          const gapSpace = Math.abs(topNow - botNow) - meshH;
-          const scaleFactor = Math.max(0, Math.min(1, gapSpace / meshH));
-          cm.mesh.scale.y = meshH * scaleFactor;
-
-          // Clean up z/rotation from 3B
-          cm.mesh.position.z *= (1 - p * 0.3);
-          cm.mesh.rotation.z *= (1 - p * 0.3);
-        },
+        onStart: () => { startX = cm.mesh.position.x as number; },
+        onUpdate: () => { cm.mesh.position.x = startX + xShift * proxy.t; },
       }, 'phase3c');
     });
 
     // ── On Complete ──
-    // Use label-based position (not `>` which is relative to last child, not the label)
     tl.call(() => {
       isComplete = true;
-
-      // Force camera to exactly Z=5 (tween should be done, but be explicit)
       camera.position.z = 5;
 
-      const handoff: SlideData[] = centerMeshes.map((cm) => {
-        const finalY = sliderYs[cm.row];
+      // Handoff: center (even slots) + fill (odd slots) = 9 in slider order
+      const allSliderMeshes: { cm: ColumnMesh; sliderRow: number }[] = [];
+      centerMeshes.forEach((cm, i) => allSliderMeshes.push({ cm, sliderRow: i * 2 }));
+      fillMeshes.forEach((cm, i) => allSliderMeshes.push({ cm, sliderRow: gapAssign[i] * 2 + 1 }));
+      allSliderMeshes.sort((a, b) => a.sliderRow - b.sliderRow);
+
+      const handoff: SlideData[] = allSliderMeshes.map(({ cm, sliderRow }) => {
+        const finalY = sliderYs[sliderRow];
 
         cm.mesh.position.x = centerX;
         cm.mesh.position.y = finalY;
@@ -560,22 +480,20 @@ export const useOpeningAnimation = ({
 
       handoffRef.current = handoff;
 
-      // Remove all outer meshes from scene
-      outerMeshes.forEach((cm) => cm.mesh.setParent(null));
-
-      // Recalculate viewport for Z=5 BEFORE notifying React
-      window.dispatchEvent(new Event('resize'));
-
-      // Notify React on next frame so viewport is fully settled
-      requestAnimationFrame(() => {
-        onCompleteRef.current();
+      // Remove non-slider outer meshes
+      const sliderMeshSet = new Set(fillMeshes.map(f => f.mesh));
+      outerMeshes.forEach((cm) => {
+        if (!sliderMeshSet.has(cm.mesh)) cm.mesh.setParent(null);
       });
+
+      window.dispatchEvent(new Event('resize'));
+      requestAnimationFrame(() => { onCompleteRef.current(); });
     }, [], `phase3c+=${PHASE3C_DURATION + 0.1}`);
 
     // Cleanup
     cleanupRef.current = () => {
+      tl.kill();
       if (!isComplete) {
-        tl.kill();
         allMeshes.forEach((cm) => cm.mesh.setParent(null));
       }
       camera.position.z = 5;
@@ -585,9 +503,6 @@ export const useOpeningAnimation = ({
       cleanupRef.current?.();
       cleanupRef.current = null;
     };
-  // Only depend on active + texturesLoaded (start/stop triggers).
-  // projects/textures are read via refs to avoid re-triggering mid-animation
-  // when the texture manager updates Map references during progressive loading.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, texturesLoaded]);
 
