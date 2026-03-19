@@ -302,6 +302,26 @@ export const useOpeningAnimation = ({
       });
     }
 
+    // Phase 1 column-level Z curve: column bows as it slides in
+    for (let c = 0; c < NUM_COLS; c++) {
+      const colMeshes = allMeshes.filter((m) => m.col === c);
+      const rowCount = c === CENTER_COL ? centerCount : outerRowCount;
+      const colProxy = { t: 0 };
+      tl.to(colProxy, {
+        t: 1,
+        duration: PHASE1_DURATION,
+        ease: 'power3.out',
+        onUpdate: () => {
+          const arc = Math.sin(colProxy.t * Math.PI);
+          colMeshes.forEach((cm) => {
+            // Normalized row position: 0 at edges, 1 at center
+            const rowNorm = 1 - Math.abs(cm.row - (rowCount - 1) / 2) / ((rowCount - 1) / 2 || 1);
+            cm.mesh.position.z = rowNorm * arc * 0.4;
+          });
+        },
+      }, `phase1+=${colStaggerMap[c]}`);
+    }
+
     // ═══════════════════════════════════════════════════════
     // PHASE 2 — Scroll + Dezoom (center col stays still)
     // ═══════════════════════════════════════════════════════
@@ -315,13 +335,33 @@ export const useOpeningAnimation = ({
     );
 
     for (let c = 0; c < NUM_COLS; c++) {
-      allMeshes.filter((m) => m.col === c).forEach((cm) => {
+      const colMeshes = allMeshes.filter((m) => m.col === c);
+      const rowCount = c === CENTER_COL ? centerCount : outerRowCount;
+
+      colMeshes.forEach((cm) => {
         tl.to(cm.mesh.position, {
           y: `+=${phase2Offsets[c]}`,
           duration: PHASE2_DURATION,
           ease: 'power2.inOut',
         }, 'phase2');
       });
+
+      // Column-level Z bow during scroll (bell curve)
+      if (phase2Offsets[c] !== 0) {
+        const scrollProxy = { t: 0 };
+        tl.to(scrollProxy, {
+          t: 1,
+          duration: PHASE2_DURATION,
+          ease: 'power2.inOut',
+          onUpdate: () => {
+            const arc = Math.sin(scrollProxy.t * Math.PI);
+            colMeshes.forEach((cm) => {
+              const rowNorm = 1 - Math.abs(cm.row - (rowCount - 1) / 2) / ((rowCount - 1) / 2 || 1);
+              cm.mesh.position.z = rowNorm * arc * 0.3;
+            });
+          },
+        }, 'phase2');
+      }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -410,11 +450,14 @@ export const useOpeningAnimation = ({
         onStart: () => {
           cm.mesh.position.x = expectedX;
           cm.mesh.position.y = expectedY;
-          console.log(`[3B] proj=${cm.projectIndex + 1} col=${cm.col} start=(${expectedX.toFixed(1)},${expectedY.toFixed(1)}) target=(${animCenterX.toFixed(1)},${targetY.toFixed(1)})`);
         },
         onUpdate: () => {
           cm.mesh.position.x = lerp(expectedX, animCenterX, proxy.t);
           cm.mesh.position.y = lerp(expectedY, targetY, proxy.t);
+          // Per-mesh distortion during convergence
+          const sinP = Math.sin(proxy.t * Math.PI);
+          cm.program.uniforms.u_distortionAmount.value = sinP * 1.5;
+          cm.mesh.position.z = sinP * 0.15;
         },
       }, `phase3b+=${idx * 0.02}`);
     });
@@ -463,6 +506,7 @@ export const useOpeningAnimation = ({
         cm.mesh.rotation.z = 0;
         cm.mesh.scale.set(meshW, meshH, 1);
         cm.program.uniforms.uAlpha.value = 1;
+        cm.program.uniforms.u_distortionAmount.value = 0;
         cm.program.uniforms.uWind.value = 0;
         cm.program.uniforms.uWindDir.value = [0, 0];
         cm.program.uniforms.uMeshSize.value = [meshW, meshH];
@@ -497,6 +541,8 @@ export const useOpeningAnimation = ({
       if (!isComplete) {
         allMeshes.forEach((cm) => cm.mesh.setParent(null));
       }
+      // Clear stale handoff so future slider activations don't adopt dead meshes
+      handoffRef.current = null;
       camera.position.z = 5;
     };
 

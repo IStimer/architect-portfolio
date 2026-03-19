@@ -29,6 +29,7 @@ interface InfiniteGridProps {
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
   skipEnterAnimation?: boolean;
+  initialScrollTo?: { x: number; y: number };
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
   getTier?: (slug: string) => TextureTier;
@@ -127,7 +128,7 @@ export const useInfiniteGridMode = ({
   texturesLoaded,
   onHover,
   onNavigate,
-  // skipEnterAnimation not needed with pool approach
+  initialScrollTo,
   markVisible,
   requestFull,
   getTier,
@@ -275,8 +276,9 @@ export const useInfiniteGridMode = ({
     };
 
     const raycast = new Raycast();
-    scrollRef.current = { x: 0, y: 0 };
-    targetScrollRef.current = { x: 0, y: 0 };
+    const initScroll = initialScrollTo ?? { x: 0, y: 0 };
+    scrollRef.current = { ...initScroll };
+    targetScrollRef.current = { ...initScroll };
     velocityRef.current = { x: 0, y: 0 };
 
     // ── Per-frame tick ──

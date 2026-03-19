@@ -104,6 +104,7 @@ export const useTransitionController = ({
   onIndexChange,
 }: TransitionControllerProps) => {
   const isAnimatingRef = useRef(false);
+  const gridScrollAnchorRef = useRef<{ x: number; y: number } | null>(null);
 
   const getContextRef = useRef(getContext);
   getContextRef.current = getContext;
@@ -131,6 +132,7 @@ export const useTransitionController = ({
     isAnimatingRef.current = true;
     let completed = false;
     let delayedRemoval: gsap.core.Tween | null = null;
+    let gridScrollAnchor: { x: number; y: number } | null = null;
 
     const { scene, viewport } = ctx;
     const vpW = viewport.width;
@@ -157,12 +159,9 @@ export const useTransitionController = ({
         s.program.uniforms.u_parallax.value = 0;
         s.program.uniforms.uHover.value = 0;
         sources.push({
-          mesh: s.mesh,
-          slug: s.slug,
-          startX: s.mesh.position.x as number,
-          startY: s.mesh.position.y as number,
-          startW: s.mesh.scale.x as number,
-          startH: s.mesh.scale.y as number,
+          mesh: s.mesh, slug: s.slug,
+          startX: s.mesh.position.x as number, startY: s.mesh.position.y as number,
+          startW: s.mesh.scale.x as number, startH: s.mesh.scale.y as number,
         });
       });
     } else {
@@ -218,11 +217,35 @@ export const useTransitionController = ({
     const targetMap = new Map<string, { x: number; y: number; w: number; h: number }>();
 
     if (toGrid) {
-      const gridLayout = gridRef.current.getLayout() ?? buildLayout(prj, vpW, vpH);
+      const existingLayout = gridRef.current.getLayout();
+      const gridLayout = existingLayout ?? buildLayout(prj, vpW, vpH);
+      const { repeatW, repeatH } = gridLayout;
+
+      // Find current project's grid position to center wrapping on it
+      const currentProj = gridLayout.positions.find((p) => p.projectIndex === idx);
+      const anchorX = currentProj ? currentProj.x : 0;
+      const anchorY = currentProj ? currentProj.y : 0;
+
+      // Grid wrapping formula: wx = pos.x - sx, wy = pos.y + sy
+      // To center on anchor: pos.x - sx = 0 → sx = anchorX
+      //                       pos.y + sy = 0 → sy = -anchorY
+      const gridScrollX = anchorX;
+      const gridScrollY = -anchorY;
+
       gridLayout.positions.forEach((p) => {
         const slug = prj[p.projectIndex]?.slug;
-        if (slug) targetMap.set(slug, { x: p.x, y: p.y, w: p.w, h: p.h });
+        if (!slug) return;
+        // Match grid wrapping: wx = pos.x - sx, wy = pos.y + sy
+        let wx = p.x - gridScrollX;
+        let wy = p.y + gridScrollY;
+        wx = ((wx + repeatW / 2) % repeatW + repeatW) % repeatW - repeatW / 2;
+        wy = ((wy + repeatH / 2) % repeatH + repeatH) % repeatH - repeatH / 2;
+        targetMap.set(slug, { x: wx, y: wy, w: p.w, h: p.h });
       });
+
+      // Store scroll so grid starts at matching position
+      gridScrollAnchor = { x: gridScrollX, y: gridScrollY };
+
     } else {
       const sliderPos = sliderTargets(prj, viewport, idx);
       sliderPos.forEach((p) => {
@@ -282,10 +305,12 @@ export const useTransitionController = ({
         for (let i = 0; i < n; i++) {
           const prog = (allMeshes[i] as any).program;
           if (prog?.uniforms?.uAlpha) prog.uniforms.uAlpha.value = 1.0;
+          if (prog?.uniforms?.u_distortionAmount) prog.uniforms.u_distortionAmount.value = 0;
           if (prog?.uniforms?.uWind) prog.uniforms.uWind.value = 0;
           if (prog?.uniforms?.uWindDir) prog.uniforms.uWindDir.value = [0, 0];
         }
 
+        gridScrollAnchorRef.current = gridScrollAnchor;
         onCompleteRef.current(dest);
         isAnimatingRef.current = false;
 
@@ -389,4 +414,6 @@ export const useTransitionController = ({
       isAnimatingRef.current = false;
     };
   }, [viewMode]);
+
+  return { getGridScrollAnchor: () => gridScrollAnchorRef.current };
 };

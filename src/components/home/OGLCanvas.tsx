@@ -95,6 +95,8 @@ const OGLCanvas = ({
     [onNavigate]
   );
 
+  const gridScrollAnchorRef = useRef<{ x: number; y: number } | null>(null);
+
   const gridHandle = useInfiniteGridMode({
     getContext,
     active: gridActive,
@@ -104,12 +106,13 @@ const OGLCanvas = ({
     onHover: handleGridHover,
     onNavigate: handleGridNavigate,
     skipEnterAnimation: viewMode === 'transitioning-to-slider',
+    initialScrollTo: gridScrollAnchorRef.current ?? undefined,
     markVisible,
     requestFull,
     getTier,
   });
 
-  useTransitionController({
+  const transitionHandle = useTransitionController({
     getContext,
     viewMode,
     currentIndex,
@@ -119,6 +122,10 @@ const OGLCanvas = ({
     onTransitionComplete,
     onIndexChange,
   });
+
+  // Sync grid scroll anchor from transition controller
+  const anchor = transitionHandle.getGridScrollAnchor();
+  if (anchor) gridScrollAnchorRef.current = anchor;
 
   // Expose jumpTo for parent
   const handleJumpTo = useCallback((index: number) => {
