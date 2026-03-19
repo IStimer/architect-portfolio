@@ -18,14 +18,16 @@ interface TransitionControllerProps {
   onIndexChange?: (index: number) => void;
 }
 
-// ---------- helpers ----------
+// ── Helpers ──────────────────────────────────────────────────────
 
 const SLIDE_SPACING = 0.04;
+const STAGGER_INTERVAL = 0.03; // tighter stagger for fewer meshes
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
+/** Compute slider positions for all projects, centered on `idx`. */
 function sliderTargets(
   projects: ProjectData[],
   vp: { width: number; height: number },
@@ -38,10 +40,10 @@ function sliderTargets(
   const h = 0.50 * vp.height;
   const sp = SLIDE_SPACING * vp.height;
 
-  const out: { x: number; y: number; w: number; h: number }[] = [];
+  const out: { slug: string; x: number; y: number; w: number; h: number }[] = [];
   let cum = 0;
   for (let i = 0; i < projects.length; i++) {
-    out.push({ x: cx, y: -cum, w, h });
+    out.push({ slug: projects[i].slug, x: cx, y: -cum, w, h });
     cum += h + sp;
   }
 
@@ -55,30 +57,41 @@ function sliderTargets(
   });
 }
 
+function byDist(pts: { x: number; y: number }[]) {
+  const m = pts.map((p, i) => ({ i, d: Math.hypot(p.x, p.y) }));
+  m.sort((a, b) => a.d - b.d);
+  return m.map((e) => e.i);
+}
+
 function rankMap(sorted: number[], n: number) {
   const r = new Array<number>(n);
   sorted.forEach((orig, rank) => { r[orig] = rank; });
   return r;
 }
 
-function byDist(pts: { x: number; y: number }[], desc = false) {
-  const m = pts.map((p, i) => ({ i, d: Math.hypot(p.x, p.y) }));
-  m.sort((a, b) => desc ? b.d - a.d : a.d - b.d);
-  return m.map((e) => e.i);
-}
-
-/** Find which project index is closest to viewport center */
-function findCenterProject(positions: { x: number; y: number }[]) {
-  let best = 0;
+/** Find which slug is closest to viewport center in an array of positioned meshes */
+function findCenterSlug(items: { slug: string; x: number; y: number }[]): string | null {
+  let bestSlug: string | null = null;
   let bestD = Infinity;
-  for (let i = 0; i < positions.length; i++) {
-    const d = Math.hypot(positions[i].x, positions[i].y);
-    if (d < bestD) { bestD = d; best = i; }
+  for (const item of items) {
+    const d = Math.hypot(item.x, item.y);
+    if (d < bestD) { bestD = d; bestSlug = item.slug; }
   }
-  return best;
+  return bestSlug;
 }
 
-// ---------- hook ----------
+// ── Mesh info for matching ──────────────────────────────────────
+
+interface TransitionMesh {
+  mesh: Mesh;
+  slug: string;
+  startX: number;
+  startY: number;
+  startW: number;
+  startH: number;
+}
+
+// ── Hook ────────────────────────────────────────────────────────
 
 export const useTransitionController = ({
   getContext,
@@ -92,7 +105,6 @@ export const useTransitionController = ({
 }: TransitionControllerProps) => {
   const isAnimatingRef = useRef(false);
 
-  // Refs for stable access inside the effect (single dep: viewMode)
   const getContextRef = useRef(getContext);
   getContextRef.current = getContext;
   const currentIndexRef = useRef(currentIndex);
@@ -127,13 +139,11 @@ export const useTransitionController = ({
     const prj = projectsRef.current;
 
     // ── Take ownership of source meshes ──
-    const meshes: Mesh[] = [];
-    let gridSlugs: string[] = [];
+    const sources: TransitionMesh[] = [];
 
     if (toGrid) {
-      const src = sliderRef.current.getSlides();
-      const slides = [...src];
-      src.length = 0;
+      // Slider → Grid: take the ~9 windowed slider meshes
+      const slides = sliderRef.current.takeOwnership();
 
       const postfx = sliderRef.current.getPostfxMesh();
       if (postfx) {
@@ -146,81 +156,118 @@ export const useTransitionController = ({
         s.program.uniforms.u_distortionAmount.value = 0;
         s.program.uniforms.u_parallax.value = 0;
         s.program.uniforms.uHover.value = 0;
-        meshes.push(s.mesh);
+        sources.push({
+          mesh: s.mesh,
+          slug: s.slug,
+          startX: s.mesh.position.x as number,
+          startY: s.mesh.position.y as number,
+          startW: s.mesh.scale.x as number,
+          startH: s.mesh.scale.y as number,
+        });
       });
     } else {
-      const src = gridRef.current.getMeshes();
-      const items = [...src];
-      src.length = 0;
-      items.forEach((item) => meshes.push(item.mesh));
+      // Grid → Slider: take the ~30 pooled grid meshes
+      const items = gridRef.current.takeOwnership();
 
-      // Build slug lookup so we can map mesh-array index → project index
-      gridSlugs = items.map((item) => item.slug);
-
-      // Re-wrap positions to nearest-to-center copy.
-      // The grid uses a 2×cell wrap range, so primaries can be up to repeatW
-      // away from center. Shrink to 1×cell range so they match what's visible.
+      // Re-wrap to nearest-to-center positions
       const layout = gridRef.current.getLayout();
       if (layout) {
         const { repeatW, repeatH } = layout;
-        meshes.forEach((m) => {
-          let px = m.position.x as number;
-          let py = m.position.y as number;
+        items.forEach((item) => {
+          let px = item.mesh.position.x as number;
+          let py = item.mesh.position.y as number;
           px = ((px + repeatW / 2) % repeatW + repeatW) % repeatW - repeatW / 2;
           py = ((py + repeatH / 2) % repeatH + repeatH) % repeatH - repeatH / 2;
-          m.position.x = px;
-          m.position.y = py;
+          item.mesh.position.x = px;
+          item.mesh.position.y = py;
         });
       }
+
+      items.forEach((item) => {
+        sources.push({
+          mesh: item.mesh,
+          slug: item.slug,
+          startX: item.mesh.position.x as number,
+          startY: item.mesh.position.y as number,
+          startW: item.mesh.scale.x as number,
+          startH: item.mesh.scale.y as number,
+        });
+      });
     }
 
-    const n = meshes.length;
+    const n = sources.length;
     if (n === 0) { isAnimatingRef.current = false; return; }
 
-    // ── Snapshot start state ──
-    const pos0 = meshes.map((m) => ({ x: m.position.x as number, y: m.position.y as number }));
-    const scale0 = meshes.map((m) => ({ w: m.scale.x as number, h: m.scale.y as number }));
-
-    // ── For grid→slider: find the project closest to viewport center ──
+    // ── For grid→slider: detect which project to center on ──
     let idx: number;
     if (toSlider) {
-      const centerMeshIdx = findCenterProject(pos0);
-      // Map mesh-array index to actual project index via slug
-      const slug = gridSlugs[centerMeshIdx];
-      idx = prj.findIndex((p) => p.slug === slug);
+      const centerSlug = findCenterSlug(sources.map((s) => ({
+        slug: s.slug, x: s.startX, y: s.startY,
+      })));
+      idx = prj.findIndex((p) => p.slug === centerSlug);
       if (idx === -1) idx = 0;
 
-      // Debug: log all mesh positions and detected center
-      console.log('[transition] grid→slider detection:', {
-        meshPositions: pos0.map((p, i) => ({ i, slug: gridSlugs[i], x: p.x.toFixed(3), y: p.y.toFixed(3), dist: Math.hypot(p.x, p.y).toFixed(3) })),
-        centerMeshIdx,
-        detectedSlug: slug,
-        projectIndex: idx,
-      });
+      if (onIndexChangeRef.current) {
+        onIndexChangeRef.current(idx);
+      }
     } else {
       idx = currentIndexRef.current;
     }
 
-    // Update parent index immediately so React batches it with the viewMode change
-    if (toSlider && onIndexChangeRef.current) {
-      onIndexChangeRef.current(idx);
+    // ── Build destination target map (slug → position) ──
+    const targetMap = new Map<string, { x: number; y: number; w: number; h: number }>();
+
+    if (toGrid) {
+      const gridLayout = gridRef.current.getLayout() ?? buildLayout(prj, vpW, vpH);
+      gridLayout.positions.forEach((p) => {
+        const slug = prj[p.projectIndex]?.slug;
+        if (slug) targetMap.set(slug, { x: p.x, y: p.y, w: p.w, h: p.h });
+      });
+    } else {
+      const sliderPos = sliderTargets(prj, viewport, idx);
+      sliderPos.forEach((p) => {
+        targetMap.set(p.slug, { x: p.x, y: p.y, w: p.w, h: p.h });
+      });
     }
 
-    // ── Compute destination positions ──
-    const targets = toGrid
-      ? (gridRef.current.getLayout() ?? buildLayout(prj, vpW, vpH))
-          .positions.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h }))
-      : sliderTargets(prj, viewport, idx);
+    // ── Match sources to targets by slug ──
+    type MatchedItem = {
+      mesh: Mesh;
+      sx: number; sy: number; sw: number; sh: number;
+      ex: number; ey: number; ew: number; eh: number;
+      matched: boolean;
+    };
 
-    // ── Stagger order: center-first for both directions ──
+    const items: MatchedItem[] = sources.map((src) => {
+      const target = targetMap.get(src.slug);
+      if (target) {
+        return {
+          mesh: src.mesh,
+          sx: src.startX, sy: src.startY, sw: src.startW, sh: src.startH,
+          ex: target.x, ey: target.y, ew: target.w, eh: target.h,
+          matched: true,
+        };
+      }
+      // No match — fade out in place
+      return {
+        mesh: src.mesh,
+        sx: src.startX, sy: src.startY, sw: src.startW, sh: src.startH,
+        ex: src.startX, ey: src.startY, ew: src.startW, eh: src.startH,
+        matched: false,
+      };
+    });
+
+    // ── Stagger order: center-first ──
+    const pos0 = items.map((it) => ({ x: it.sx, y: it.sy }));
     const staggerRank = rankMap(byDist(pos0), n);
 
-    // ── Keep uMeshSize in sync with scale ──
+    // ── Keep uMeshSize in sync ──
+    const allMeshes = items.map((it) => it.mesh);
     const syncUniforms = () => {
       for (let i = 0; i < n; i++) {
-        const prog = (meshes[i] as any).program;
+        const prog = (allMeshes[i] as any).program;
         if (prog?.uniforms?.uMeshSize) {
-          prog.uniforms.uMeshSize.value = [meshes[i].scale.x, meshes[i].scale.y];
+          prog.uniforms.uMeshSize.value = [allMeshes[i].scale.x, allMeshes[i].scale.y];
         }
       }
     };
@@ -232,23 +279,18 @@ export const useTransitionController = ({
         completed = true;
         gsap.ticker.remove(syncUniforms);
 
-        // Ensure transition uniforms are restored for all meshes
         for (let i = 0; i < n; i++) {
-          const prog = (meshes[i] as any).program;
+          const prog = (allMeshes[i] as any).program;
           if (prog?.uniforms?.uAlpha) prog.uniforms.uAlpha.value = 1.0;
           if (prog?.uniforms?.uWind) prog.uniforms.uWind.value = 0;
           if (prog?.uniforms?.uWindDir) prog.uniforms.uWindDir.value = [0, 0];
         }
 
-        // Signal destination mode — meshes stay visible at final positions
         onCompleteRef.current(dest);
         isAnimatingRef.current = false;
 
-        // Defer mesh removal with gsap.delayedCall (runs inside GSAP tick,
-        // guaranteed AFTER the destination mode's render tick has filled the
-        // RT / created its meshes — avoids the rAF race that caused the flash)
         delayedRemoval = gsap.delayedCall(0.15, () => {
-          meshes.forEach((m) => {
+          allMeshes.forEach((m) => {
             m.position.z = 0;
             m.rotation.z = 0;
             m.setParent(null);
@@ -258,19 +300,15 @@ export const useTransitionController = ({
       },
     });
 
-    // Magnetic Morph — each mesh follows a quadratic bezier curve
     for (let i = 0; i < n; i++) {
-      const t = targets[i];
-      if (!t) continue;
+      const it = items[i];
+      const staggerDelay = staggerRank[i] * STAGGER_INTERVAL;
 
-      const staggerDelay = staggerRank[i] * 0.06;
-
-      const sx = pos0[i].x, sy = pos0[i].y;
-      const ex = t.x, ey = t.y;
+      const { sx, sy, sw, sh, ex, ey, ew, eh, matched } = it;
       const dx = ex - sx, dy = ey - sy;
       const dist = Math.hypot(dx, dy);
 
-      // Quadratic bezier control point — perpendicular offset
+      // Bezier control point
       let cpx = (sx + ex) / 2;
       let cpy = (sy + ey) / 2;
       if (dist > 0.001) {
@@ -281,58 +319,54 @@ export const useTransitionController = ({
         cpy += perpY * offset;
       }
 
-      const sw0 = scale0[i].w, sh0 = scale0[i].h;
-      const sw1 = t.w, sh1 = t.h;
       const movesMoreX = Math.abs(dx) > Math.abs(dy);
 
-      // Wind direction in UV space — normalized movement vector
+      // Wind direction
       const windDirX = dist > 0.001 ? dx / dist : 0;
       const windDirY = dist > 0.001 ? dy / dist : 0;
-
-      // Set wind direction once (static per card)
-      const prog = (meshes[i] as any).program;
+      const prog = (it.mesh as any).program;
       if (prog?.uniforms?.uWindDir) {
-        prog.uniforms.uWindDir.value = [windDirX, -windDirY]; // flip Y for UV space
+        prog.uniforms.uWindDir.value = [windDirX, -windDirY];
       }
 
       const proxy = { t: 0 };
       tl.to(proxy, {
         t: 1,
-        duration: 1.0,
-        ease: 'power3.inOut',
+        duration: matched ? 1.0 : 0.5, // unmatched: quick fade out
+        ease: matched ? 'power3.inOut' : 'power2.in',
         onUpdate: () => {
           const p = proxy.t;
           const inv = 1 - p;
           const sinP = Math.sin(p * Math.PI);
 
-          // Quadratic bezier position
-          meshes[i].position.x = inv * inv * sx + 2 * inv * p * cpx + p * p * ex;
-          meshes[i].position.y = inv * inv * sy + 2 * inv * p * cpy + p * p * ey;
+          if (matched) {
+            // Quadratic bezier position
+            it.mesh.position.x = inv * inv * sx + 2 * inv * p * cpx + p * p * ex;
+            it.mesh.position.y = inv * inv * sy + 2 * inv * p * cpy + p * p * ey;
 
-          // Subtle Z arc
-          meshes[i].position.z = sinP * 0.1;
+            // Z arc
+            it.mesh.position.z = sinP * 0.1;
 
-          // Rotation Z aligned to trajectory (max ~3 degrees)
-          const angle = Math.atan2(dy, dx);
-          meshes[i].rotation.z = sinP * angle * 0.05;
+            // Rotation
+            const angle = Math.atan2(dy, dx);
+            it.mesh.rotation.z = sinP * angle * 0.05;
 
-          // Scale with squash & stretch at midpoint
-          const squash = 1 - sinP * 0.08;
-          const stretch = 1 + sinP * 0.04;
-          const sw = lerp(sw0, sw1, p);
-          const sh = lerp(sh0, sh1, p);
-          meshes[i].scale.x = sw * (movesMoreX ? squash : stretch);
-          meshes[i].scale.y = sh * (movesMoreX ? stretch : squash);
+            // Squash & stretch
+            const squash = 1 - sinP * 0.08;
+            const stretch = 1 + sinP * 0.04;
+            const curW = lerp(sw, ew, p);
+            const curH = lerp(sh, eh, p);
+            it.mesh.scale.x = curW * (movesMoreX ? squash : stretch);
+            it.mesh.scale.y = curH * (movesMoreX ? stretch : squash);
 
-          // Wind intensity — peaks at midpoint, eases in/out
-          const prog = (meshes[i] as any).program;
-          if (prog?.uniforms?.uWind) {
-            prog.uniforms.uWind.value = sinP;
-          }
+            // Wind
+            if (prog?.uniforms?.uWind) prog.uniforms.uWind.value = sinP;
 
-          // Alpha dip
-          if (prog?.uniforms?.uAlpha) {
-            prog.uniforms.uAlpha.value = 1 - sinP * 0.08;
+            // Alpha dip
+            if (prog?.uniforms?.uAlpha) prog.uniforms.uAlpha.value = 1 - sinP * 0.08;
+          } else {
+            // Unmatched: just fade out
+            if (prog?.uniforms?.uAlpha) prog.uniforms.uAlpha.value = 1 - p;
           }
         },
       }, staggerDelay);
@@ -343,7 +377,7 @@ export const useTransitionController = ({
       tl.kill();
       gsap.ticker.remove(syncUniforms);
       if (delayedRemoval) delayedRemoval.kill();
-      meshes.forEach((m) => {
+      allMeshes.forEach((m) => {
         m.position.z = 0;
         m.rotation.z = 0;
         const prog = (m as any).program;

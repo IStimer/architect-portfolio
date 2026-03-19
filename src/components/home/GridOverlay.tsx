@@ -1,19 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
-import { projectsData } from '../../data/projectsData';
+import type { ProjectData } from '../../types';
 
 interface GridOverlayProps {
   active: boolean;
   hoveredSlug: string | null;
+  projects: ProjectData[];
 }
 
-const GridOverlay = ({ active, hoveredSlug }: GridOverlayProps) => {
+const GridOverlay = ({ active, hoveredSlug, projects }: GridOverlayProps) => {
   const labelRef = useRef<HTMLDivElement>(null);
   const posRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const project = hoveredSlug
-    ? projectsData.find((p) => p.slug === hoveredSlug)
+    ? projects.find((p) => p.slug === hoveredSlug)
     : null;
 
   // Fade in/out based on active
@@ -66,7 +67,7 @@ const GridOverlay = ({ active, hoveredSlug }: GridOverlayProps) => {
   }, [project]);
 
   return (
-    <div ref={containerRef} className="grid-overlay" style={{ opacity: 0 }}>
+    <div ref={containerRef} className="grid-overlay" style={{ opacity: active ? 1 : 0 }}>
       {/* Crosshair — same style as slider-overlay__crosshair */}
       <div className="grid-overlay__crosshair grid-overlay__crosshair--h" />
       <div className="grid-overlay__crosshair grid-overlay__crosshair--v" />

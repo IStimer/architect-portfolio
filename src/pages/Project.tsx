@@ -6,7 +6,7 @@ import { useScrollProgress } from '../hooks/useScrollProgress';
 import { useMinimap } from '../hooks/useMinimap';
 import useMatchMedia from '../hooks/useMatchMedia';
 import { useNextProjectAnimation } from '../hooks/useNextProjectAnimation';
-import { projectsData, getTranslatedProject } from '../data/projectsData';
+import { useProjects } from '../hooks/useProjects';
 import { localizedPath } from '../i18n/routes';
 import {
   ProjectHero,
@@ -23,17 +23,18 @@ const Project = () => {
   const { slug } = useParams<{ slug: string }>();
   const { t } = useTranslation(['project', 'common']);
   const { navigateTo, currentLang } = useLocalizedNavigate();
+  const { projects } = useProjects(currentLang as 'fr' | 'en');
   const isMobile = useMatchMedia('(max-width: 767px)');
   const showMinimap = useMatchMedia('(min-width: 1200px)');
   const scrollProgressRef = useScrollProgress(!isMobile);
 
-  const project = useMemo(() => getTranslatedProject(slug || '', t) ?? null, [slug, t]);
+  const project = useMemo(() => projects.find(p => p.slug === slug) ?? null, [slug, projects]);
   const nextProject = useMemo(() => {
-    if (!project) return null;
-    const currentIndex = projectsData.findIndex(p => p.slug === slug);
-    const nextSlug = projectsData[(currentIndex + 1) % projectsData.length].slug;
-    return getTranslatedProject(nextSlug, t) ?? null;
-  }, [slug, t, project]);
+    if (!project || projects.length === 0) return null;
+    const currentIndex = projects.findIndex(p => p.slug === slug);
+    const nextSlug = projects[(currentIndex + 1) % projects.length].slug;
+    return projects.find(p => p.slug === nextSlug) ?? null;
+  }, [slug, projects, project]);
 
   const {
     contentRef,
@@ -98,6 +99,7 @@ const Project = () => {
       <ProjectHero
         key={slug}
         project={project}
+        totalProjects={projects.length}
         onBack={() => navigateTo('home')}
       />
 

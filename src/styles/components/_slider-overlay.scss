@@ -108,6 +108,8 @@
   overflow: hidden;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   padding: 12px 0;
+  display: flex;
+  justify-content: center;
   mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
 }
 

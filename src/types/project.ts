@@ -31,6 +31,13 @@ export interface ProjectData {
   heroImage?: string;
   footerImage?: string;
   category?: string;
+  // CMS fields
+  heroImageUrl?: string;
+  thumbnailUrl?: string;
+  lqipBase64?: string;
+  categorySlug?: string;
+  sortOrder?: number;
+  featured?: boolean;
 }
 
 export interface RectangleData {

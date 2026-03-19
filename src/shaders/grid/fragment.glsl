@@ -6,6 +6,7 @@ uniform vec2 uMouse;
 uniform vec2 uResolution;
 uniform vec2 uMeshSize;
 uniform float uAlpha;
+uniform float uTextureReady;
 
 varying vec2 vUv;
 
@@ -32,5 +33,5 @@ void main() {
   tex.rgb += uHover * 0.08 * smoothstep(0.4, 0.0, dist);
 
   gl_FragColor = tex;
-  gl_FragColor.a *= uAlpha;
+  gl_FragColor.a *= uAlpha * uTextureReady;
 }

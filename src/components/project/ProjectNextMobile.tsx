@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ProjectData } from '../../data/projectsData';
+import type { ProjectData } from '../../types';
 import FitWords from '../ui/FitWords';
 
 interface ProjectNextMobileProps {

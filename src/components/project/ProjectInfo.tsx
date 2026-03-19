@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ProjectData } from '../../data/projectsData';
+import type { ProjectData } from '../../types';
 import { scrambleIn, scrambleInLines, SCRAMBLE_CHARS } from '../../utils/scrambleText';
 import { prefersReducedMotion } from '../../utils/prefersReducedMotion';
 

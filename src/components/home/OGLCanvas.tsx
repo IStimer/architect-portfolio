@@ -1,20 +1,19 @@
 import { useRef, useCallback } from 'react';
 import { useOGLRenderer } from '../../hooks/useOGLRenderer';
-import { useTextureLoader } from '../../hooks/useTextureLoader';
+import { useTextureManager } from '../../hooks/useTextureManager';
 import { useSliderMode } from '../../hooks/useSliderMode';
 import { useInfiniteGridMode } from '../../hooks/useInfiniteGridMode';
 import { useTransitionController } from '../../hooks/useTransitionController';
-import { projectsData } from '../../data/projectsData';
-import type { ViewMode } from '../../types';
+import type { ViewMode, ProjectData } from '../../types';
 
 interface OGLCanvasProps {
   active: boolean;
   viewMode: ViewMode;
   currentIndex: number;
+  projects: ProjectData[];
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
-  onJumpTo?: (index: number) => void;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
 }
 
@@ -22,6 +21,7 @@ const OGLCanvas = ({
   active,
   viewMode,
   currentIndex,
+  projects,
   onIndexChange,
   onHover,
   onNavigate,
@@ -33,23 +33,32 @@ const OGLCanvas = ({
 
   const gl = ready ? getContext()?.gl ?? null : null;
 
-  const { textures, loaded: texturesLoaded } = useTextureLoader(
-    gl,
-    projectsData
-  );
+  const {
+    textures,
+    loaded: texturesLoaded,
+    markVisible,
+    requestFull,
+    getTier,
+  } = useTextureManager(gl, projects);
 
-  const sliderActive = active && ready && (viewMode === 'slider' || viewMode === 'transitioning-to-grid');
+  // Initialize slider even during intro so textures are ready when it ends.
+  // The slider renders to a RenderTarget (not screen), so it's invisible until active.
+  const sliderShouldInit = ready && (viewMode === 'slider' || viewMode === 'transitioning-to-grid');
+  const sliderActive = sliderShouldInit; // always run if mode matches — visibility controlled by overlay opacity
   const gridActive = active && ready && (viewMode === 'grid' || viewMode === 'transitioning-to-slider');
 
   const sliderHandle = useSliderMode({
     getContext,
     active: sliderActive,
-    projects: projectsData,
+    projects,
     textures,
     texturesLoaded,
     currentIndex,
     onIndexChange,
     jumpToRef,
+    markVisible,
+    requestFull,
+    getTier,
   });
 
   const handleGridHover = useCallback(
@@ -69,19 +78,22 @@ const OGLCanvas = ({
   const gridHandle = useInfiniteGridMode({
     getContext,
     active: gridActive,
-    projects: projectsData,
+    projects,
     textures,
     texturesLoaded,
     onHover: handleGridHover,
     onNavigate: handleGridNavigate,
     skipEnterAnimation: viewMode === 'transitioning-to-slider',
+    markVisible,
+    requestFull,
+    getTier,
   });
 
   useTransitionController({
     getContext,
     viewMode,
     currentIndex,
-    projects: projectsData,
+    projects,
     sliderHandle,
     gridHandle,
     onTransitionComplete,

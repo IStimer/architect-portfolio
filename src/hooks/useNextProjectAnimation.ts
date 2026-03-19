@@ -3,7 +3,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { useLenis } from './useLenis';
-import { ProjectData, projectsData } from '../data/projectsData';
+import type { ProjectData } from '../types';
 import { viewTransitionFinished } from '../utils/viewTransitions';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 
@@ -105,14 +105,7 @@ export const useNextProjectAnimation = ({
     if (isMobile) return;
     if (!nextProjectRef.current || !nextProjectBgRef.current || !nextProject || !currentSlug) return;
 
-    const currentProject = projectsData.find(p => p.slug === currentSlug);
-    const expectedNextProject = currentProject
-      ? projectsData[(projectsData.findIndex(p => p.slug === currentSlug) + 1) % projectsData.length]
-      : null;
-
-    if (!expectedNextProject || nextProject.slug !== expectedNextProject.slug) {
-      return;
-    }
+    // nextProject is already computed and passed in by the parent
 
     const bgEl = nextProjectBgRef.current;
     const circleEl = progressCircleRef.current;

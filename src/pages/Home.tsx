@@ -1,13 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppState } from '../contexts/AppStateContext';
 import { useLocalizedNavigate } from '../hooks/useLocalizedNavigate';
+import { useProjects } from '../hooks/useProjects';
 import IntroAnimation from '../components/IntroAnimation';
 import SEO from '../components/SEO';
 import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
 import ModeToggle from '../components/home/ModeToggle';
+import CategoryFilter from '../components/home/CategoryFilter';
 import { lenisService } from '../services/lenisService';
 import { localizedPath } from '../i18n/routes';
 import type { ViewMode } from '../types';
@@ -17,13 +19,21 @@ const Home = () => {
   const { t } = useTranslation(['home', 'common']);
   const { navigateTo, currentLang } = useLocalizedNavigate();
   const { state, setIntroCompleted } = useAppState();
+  const { projects, categories } = useProjects(currentLang as 'fr' | 'en');
 
   const [viewMode, setViewMode] = useState<ViewMode>('slider');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const showIntro = !state.introCompleted;
   const canvasActive = !showIntro;
+
+  // Filter projects by active category
+  const filteredProjects = useMemo(() => {
+    if (!activeCategory) return projects;
+    return projects.filter((p) => p.categorySlug === activeCategory);
+  }, [projects, activeCategory]);
 
   const handleUnlock = useCallback(() => {
     setIntroCompleted();
@@ -74,6 +84,11 @@ const Home = () => {
     setCurrentIndex(index);
   }, []);
 
+  const handleCategoryFilter = useCallback((slug: string | null) => {
+    setActiveCategory(slug);
+    setCurrentIndex(0);
+  }, []);
+
   const isSliderVisible = viewMode === 'slider' || viewMode === 'transitioning-to-grid';
   const isGridVisible = viewMode === 'grid' || viewMode === 'transitioning-to-slider';
 
@@ -91,6 +106,7 @@ const Home = () => {
           active={canvasActive}
           viewMode={viewMode}
           currentIndex={currentIndex}
+          projects={filteredProjects}
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
@@ -100,13 +116,24 @@ const Home = () => {
         <SliderOverlay
           active={canvasActive && isSliderVisible}
           currentIndex={currentIndex}
+          projects={filteredProjects}
           onJumpTo={handleJumpTo}
         />
 
         <GridOverlay
           active={canvasActive && isGridVisible}
           hoveredSlug={hoveredSlug}
+          projects={filteredProjects}
         />
+
+        {categories.length > 0 && (
+          <CategoryFilter
+            categories={categories}
+            activeSlug={activeCategory}
+            lang={currentLang as 'fr' | 'en'}
+            onFilter={handleCategoryFilter}
+          />
+        )}
 
         <ModeToggle viewMode={viewMode} onToggle={handleToggleMode} />
 

@@ -1,6 +1,6 @@
 import { forwardRef, RefObject, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ProjectData } from '../../data/projectsData';
+import type { ProjectData } from '../../types';
 import { useProgressiveBackground } from '../../hooks/useProgressiveBackground';
 
 interface ProjectNextSectionProps {

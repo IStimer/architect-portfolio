@@ -1,16 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { Mesh, Program, Plane, Texture, Raycast, Vec2 } from 'ogl';
+import { Mesh, Program, Plane, Raycast, Vec2 } from 'ogl';
 import { gsap } from 'gsap';
 import type { OGLContext } from './useOGLRenderer';
 import type { ProjectData } from '../types';
+import { TextureTier, getPlaceholderTexture } from './useTextureManager';
+import type { TextureEntry } from './useTextureManager';
 import vertexShader from '../shaders/grid/vertex.glsl';
 import fragmentShader from '../shaders/grid/fragment.glsl';
 
-interface TextureEntry {
-  texture: Texture;
-  width: number;
-  height: number;
-}
+// ── Types ─────────────────────────────────────────────────────────
 
 interface GridMesh {
   mesh: Mesh;
@@ -31,15 +29,25 @@ interface InfiniteGridProps {
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
   skipEnterAnimation?: boolean;
+  markVisible?: (slugs: Set<string>) => void;
+  requestFull?: (slug: string) => void;
+  getTier?: (slug: string) => TextureTier;
 }
 
 export interface GridModeHandle {
   getMeshes: () => GridMesh[];
   getLayout: () => TileLayout | null;
   getScroll: () => { x: number; y: number };
+  takeOwnership: () => GridMesh[];
 }
 
-// ---------- seeded PRNG (mulberry32) ----------
+// ── Constants ─────────────────────────────────────────────────────
+
+const POOL_SIZE = 30;
+const VISIBILITY_MARGIN = 1.2; // how far beyond viewport to consider visible
+
+// ── Seeded PRNG (mulberry32) ──────────────────────────────────────
+
 function mulberry32(seed: number) {
   return () => {
     seed |= 0;
@@ -50,7 +58,8 @@ function mulberry32(seed: number) {
   };
 }
 
-// ---------- layout builder ----------
+// ── Layout builder (unchanged — pure computation) ─────────────────
+
 export interface TileLayout {
   positions: { x: number; y: number; w: number; h: number; projectIndex: number }[];
   repeatW: number;
@@ -72,7 +81,6 @@ export function buildLayout(
   const colW = vpW / cols;
   const rowH = baseUnit * 1.5;
 
-  // Cell = one complete tile block
   const cellW = vpW;
   const cellH = rows * rowH;
 
@@ -86,7 +94,6 @@ export function buildLayout(
     const w = baseUnit * sizeMultiplier;
     const h = w * (0.65 + rng() * 0.35);
 
-    // Position within cell, centered at origin
     const colCenter = -cellW / 2 + colW * (col + 0.5);
     const xJitter = (rng() - 0.5) * colW * 0.2;
     const x = colCenter + xJitter;
@@ -101,7 +108,17 @@ export function buildLayout(
   return { positions, repeatW: cellW, repeatH: cellH };
 }
 
-// ---------- hook ----------
+// ── Pool slot ─────────────────────────────────────────────────────
+
+interface PoolSlot {
+  mesh: Mesh;
+  program: Program;
+  assignedProject: number; // -1 = free
+  slug: string;
+}
+
+// ── Hook ──────────────────────────────────────────────────────────
+
 export const useInfiniteGridMode = ({
   getContext,
   active,
@@ -110,11 +127,13 @@ export const useInfiniteGridMode = ({
   texturesLoaded,
   onHover,
   onNavigate,
-  skipEnterAnimation = false,
+  // skipEnterAnimation not needed with pool approach
+  markVisible,
+  requestFull,
+  getTier,
 }: InfiniteGridProps): GridModeHandle => {
   const meshesRef = useRef<GridMesh[]>([]);
-  const duplicateMeshesRef = useRef<Mesh[]>([]);
-  const allTilesRef = useRef<GridMesh[]>([]);
+  const takeOwnershipRef = useRef<(() => GridMesh[]) | null>(null);
   const scrollRef = useRef({ x: 0, y: 0 });
   const targetScrollRef = useRef({ x: 0, y: 0 });
   const hoveredRef = useRef<string | null>(null);
@@ -125,148 +144,235 @@ export const useInfiniteGridMode = ({
   const velocityRef = useRef({ x: 0, y: 0 });
   const lastPointerRef = useRef({ x: 0, y: 0, t: 0 });
   const layoutRef = useRef<TileLayout | null>(null);
-  const skipEnterAnimRef = useRef(skipEnterAnimation);
-  skipEnterAnimRef.current = skipEnterAnimation;
 
   useEffect(() => {
     const ctx = getContext();
     if (!ctx || !active || !texturesLoaded) return;
 
     const { gl, scene, viewport } = ctx;
+    const N = projects.length;
+    if (N === 0) return;
 
     const layout = buildLayout(projects, viewport.width, viewport.height);
     layoutRef.current = layout;
 
-    const { repeatW, repeatH } = layout;
+    // ── Create mesh pool ──
+    const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+    const fallbackTex = getPlaceholderTexture(gl);
+    const actualPoolSize = Math.min(POOL_SIZE, N);
+    const pool: PoolSlot[] = [];
 
-    const gridMeshes: GridMesh[] = [];
-    const duplicates: Mesh[] = [];
-    const allTiles: GridMesh[] = [];
-    const raycast = new Raycast();
-
-    // Shared geometry for all tiles
-    const sharedGeometry = new Plane(gl, {
-      widthSegments: 16,
-      heightSegments: 16,
-    });
-
-    // 2×2 tiling offsets — wrapping at 2× cell keeps boundary far off-screen
-    const tileOffsets: [number, number][] = [
-      [0, 0],
-      [repeatW, 0],
-      [0, -repeatH],
-      [repeatW, -repeatH],
-    ];
-
-    layout.positions.forEach(({ x, y, w, h, projectIndex }) => {
-      const project = projects[projectIndex];
-      const entry = textures.get(project.slug);
-      if (!entry) return;
-
-      // One Program shared across all copies of this tile —
-      // hover uniforms update all copies at once
+    for (let i = 0; i < actualPoolSize; i++) {
       const program = new Program(gl, {
         vertex: vertexShader,
         fragment: fragmentShader,
         uniforms: {
-          uTexture: { value: entry.texture },
+          uTexture: { value: fallbackTex },
           uHover: { value: 0 },
           uMouse: { value: [0.5, 0.5] },
-          uResolution: { value: [entry.width, entry.height] },
-          uMeshSize: { value: [w, h] },
+          uResolution: { value: [4, 4] },
+          uMeshSize: { value: [1, 1] },
           uAlpha: { value: 1.0 },
+          uTextureReady: { value: 1.0 },
           uWind: { value: 0 },
           uWindDir: { value: [0, 0] },
         },
         transparent: true,
       });
 
-      tileOffsets.forEach(([dx, dy], copyIdx) => {
-        const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
-        mesh.scale.set(w, h, 1);
-        const tx = x + dx;
-        const ty = y + dy;
-        mesh.position.set(tx, ty, 0);
-        mesh.setParent(scene);
+      const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
+      // Don't add to scene yet — only when assigned to a project
+      pool.push({ mesh, program, assignedProject: -1, slug: '' });
+    }
 
-        const tile: GridMesh = {
-          mesh,
-          program,
-          slug: project.slug,
-          tileX: tx,
-          tileY: ty,
-          cellW: w,
-          cellH: h,
-        };
+    // ── Assignment tracking ──
+    // projectIndex → poolSlotIndex
+    const assignedMap = new Map<number, number>();
+    const freeSlots: number[] = [];
+    for (let i = actualPoolSize - 1; i >= 0; i--) freeSlots.push(i);
 
-        allTiles.push(tile);
+    function assignSlot(projectIdx: number, wx: number, wy: number): PoolSlot | null {
+      if (assignedMap.has(projectIdx)) {
+        // Already assigned — just update position
+        const slot = pool[assignedMap.get(projectIdx)!];
+        slot.mesh.position.x = wx;
+        slot.mesh.position.y = wy;
+        return slot;
+      }
 
-        if (copyIdx === 0) {
-          gridMeshes.push(tile);
-        } else {
-          duplicates.push(mesh);
-        }
-      });
-    });
+      if (freeSlots.length === 0) return null; // pool exhausted
 
-    meshesRef.current = gridMeshes;
-    duplicateMeshesRef.current = duplicates;
-    allTilesRef.current = allTiles;
+      const slotIdx = freeSlots.pop()!;
+      const slot = pool[slotIdx];
+      assignedMap.set(projectIdx, slotIdx);
+
+      const currentLayout = layoutRef.current!;
+      const pos = currentLayout.positions[projectIdx];
+      const project = projects[projectIdx];
+      const entry = textures.get(project.slug);
+
+      slot.assignedProject = projectIdx;
+      slot.slug = project.slug;
+      slot.mesh.scale.set(pos.w, pos.h, 1);
+      slot.mesh.position.set(wx, wy, 0);
+      slot.mesh.setParent(scene); // Add to scene when assigned
+      slot.program.uniforms.uMeshSize.value = [pos.w, pos.h];
+      slot.program.uniforms.uHover.value = 0;
+
+      if (entry) {
+        slot.program.uniforms.uTexture.value = entry.texture;
+        slot.program.uniforms.uResolution.value = [entry.width, entry.height];
+      }
+
+      return slot;
+    }
+
+    function releaseSlot(projectIdx: number) {
+      const slotIdx = assignedMap.get(projectIdx);
+      if (slotIdx === undefined) return;
+
+      const slot = pool[slotIdx];
+      slot.mesh.setParent(null); // Remove from scene when released
+      slot.assignedProject = -1;
+      slot.slug = '';
+      assignedMap.delete(projectIdx);
+      freeSlots.push(slotIdx);
+    }
+
+    // ── Build active GridMesh list for external consumers ──
+    let takenOver = false;
+
+    function syncMeshesRef() {
+      if (takenOver) return;
+      const active: GridMesh[] = [];
+      for (const [projectIdx, slotIdx] of assignedMap) {
+        const slot = pool[slotIdx];
+        const currentLayout = layoutRef.current!;
+        const pos = currentLayout.positions[projectIdx];
+        active.push({
+          mesh: slot.mesh,
+          program: slot.program,
+          slug: slot.slug,
+          tileX: pos.x,
+          tileY: pos.y,
+          cellW: pos.w,
+          cellH: pos.h,
+        });
+      }
+      meshesRef.current = active;
+    }
+
+    // Transition controller calls takeOwnership() to grab active meshes
+    // and stop the grid tick from repositioning them
+    takeOwnershipRef.current = () => {
+      takenOver = true;
+      const snapshot = [...meshesRef.current];
+      meshesRef.current = [];
+      // Clear pool tracking — transition owns the meshes now
+      assignedMap.clear();
+      freeSlots.length = 0;
+      return snapshot;
+    };
+
+    const raycast = new Raycast();
     scrollRef.current = { x: 0, y: 0 };
     targetScrollRef.current = { x: 0, y: 0 };
     velocityRef.current = { x: 0, y: 0 };
 
-    // ---- per-frame: scroll + modular wrapping ----
+    // ── Per-frame tick ──
     const tickUpdate = () => {
-      if (!getContext()) return;
+      const curCtx = getContext();
+      if (!curCtx) return;
 
-      // Transition controller took ownership — stop ticking, remove duplicates
-      if (meshesRef.current.length === 0) {
-        duplicateMeshesRef.current.forEach((m) => m.setParent(null));
-        duplicateMeshesRef.current = [];
-        allTilesRef.current = [];
-        return;
-      }
+      if (takenOver) return;
 
       const currentLayout = layoutRef.current;
       if (!currentLayout) return;
 
+      // Scroll physics
       if (isDraggingRef.current) {
-        // Direct follow during drag — zero latency
         scrollRef.current.x = targetScrollRef.current.x;
         scrollRef.current.y = targetScrollRef.current.y;
       } else {
-        // Smooth lerp for inertia deceleration
         const lerpFactor = 0.12;
         scrollRef.current.x += (targetScrollRef.current.x - scrollRef.current.x) * lerpFactor;
         scrollRef.current.y += (targetScrollRef.current.y - scrollRef.current.y) * lerpFactor;
-
         targetScrollRef.current.x += velocityRef.current.x;
         targetScrollRef.current.y += velocityRef.current.y;
         velocityRef.current.x *= 0.95;
         velocityRef.current.y *= 0.95;
       }
 
-      // Wrap at 2× cell dimensions — boundary stays well outside viewport
-      const wrapW = currentLayout.repeatW * 2;
-      const wrapH = currentLayout.repeatH * 2;
       const sx = scrollRef.current.x;
       const sy = scrollRef.current.y;
+      const vpW = curCtx.viewport.width;
+      const vpH = curCtx.viewport.height;
+      const marginW = vpW * VISIBILITY_MARGIN;
+      const marginH = vpH * VISIBILITY_MARGIN;
 
-      allTilesRef.current.forEach((item) => {
-        let px = item.tileX - sx;
-        let py = item.tileY + sy;
+      // ── Determine which projects are visible after wrapping ──
+      const nowVisible = new Set<number>();
+      const wrappedPositions = new Map<number, { wx: number; wy: number }>();
 
-        px = ((px + wrapW / 2) % wrapW + wrapW) % wrapW - wrapW / 2;
-        py = ((py + wrapH / 2) % wrapH + wrapH) % wrapH - wrapH / 2;
+      for (let i = 0; i < currentLayout.positions.length; i++) {
+        const pos = currentLayout.positions[i];
+        let wx = pos.x - sx;
+        let wy = pos.y + sy;
 
-        item.mesh.position.x = px;
-        item.mesh.position.y = py;
-      });
+        // Modular wrapping
+        wx = ((wx + currentLayout.repeatW / 2) % currentLayout.repeatW + currentLayout.repeatW) % currentLayout.repeatW - currentLayout.repeatW / 2;
+        wy = ((wy + currentLayout.repeatH / 2) % currentLayout.repeatH + currentLayout.repeatH) % currentLayout.repeatH - currentLayout.repeatH / 2;
+
+        if (Math.abs(wx) < marginW && Math.abs(wy) < marginH) {
+          nowVisible.add(i);
+          wrappedPositions.set(i, { wx, wy });
+        }
+      }
+
+      // ── Release slots for projects no longer visible ──
+      const toRelease: number[] = [];
+      for (const projectIdx of assignedMap.keys()) {
+        if (!nowVisible.has(projectIdx)) toRelease.push(projectIdx);
+      }
+      for (const idx of toRelease) releaseSlot(idx);
+
+      // ── Assign slots for newly visible projects ──
+      const visibleSlugs = new Set<string>();
+
+      for (const projectIdx of nowVisible) {
+        const { wx, wy } = wrappedPositions.get(projectIdx)!;
+        const slot = assignSlot(projectIdx, wx, wy);
+        if (!slot) continue; // pool exhausted
+
+        visibleSlugs.add(slot.slug);
+
+        // Update position for already-assigned slots
+        slot.mesh.position.x = wx;
+        slot.mesh.position.y = wy;
+
+        // Update texture resolution if tier upgraded
+        const entry = textures.get(slot.slug);
+        if (entry) {
+          const res = slot.program.uniforms.uResolution.value;
+          if (res[0] !== entry.width || res[1] !== entry.height) {
+            res[0] = entry.width;
+            res[1] = entry.height;
+          }
+        }
+
+        // Animate uTextureReady
+        const tier = getTier?.(slot.slug) ?? TextureTier.FULL;
+        const targetReady = tier >= TextureTier.THUMBNAIL ? 1.0 : 0.3;
+        const cur = slot.program.uniforms.uTextureReady.value;
+        slot.program.uniforms.uTextureReady.value += (targetReady - cur) * 0.08;
+      }
+
+      markVisible?.(visibleSlugs);
+      syncMeshesRef();
     };
     gsap.ticker.add(tickUpdate);
 
-    // ---- wheel: omnidirectional ----
+    // ── Wheel ──
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       targetScrollRef.current.x += e.deltaX * 0.003;
@@ -274,7 +380,7 @@ export const useInfiniteGridMode = ({
     };
     ctx.canvas.addEventListener('wheel', handleWheel, { passive: false });
 
-    // ---- drag: pointer events ----
+    // ── Drag ──
     const handlePointerDown = (e: PointerEvent) => {
       isDraggingRef.current = true;
       velocityRef.current = { x: 0, y: 0 };
@@ -304,41 +410,35 @@ export const useInfiniteGridMode = ({
         lastPointerRef.current = { x: e.clientX, y: e.clientY, t: now };
       }
 
-      // ---- hover raycast (all tiles including duplicates) ----
+      // ── Hover raycast (only active pool meshes) ──
       const currentCtx = getContext();
       if (!currentCtx) return;
 
+      const activeMeshes = meshesRef.current;
       raycast.castMouse(currentCtx.camera, mouseRef.current);
-      const meshList = allTilesRef.current.map((m) => m.mesh);
-      const hits = raycast.intersectMeshes(meshList);
+      const hits = raycast.intersectMeshes(activeMeshes.map((m) => m.mesh));
 
       let foundSlug: string | null = null;
 
-      allTilesRef.current.forEach((item) => {
+      activeMeshes.forEach((item) => {
         const isHit = hits.some((h: any) => h === item.mesh);
         if (isHit) {
           foundSlug = item.slug;
+          requestFull?.(item.slug);
           const localX = (e.clientX / window.innerWidth - 0.5) * currentCtx.viewport.width;
           const localY = (0.5 - e.clientY / window.innerHeight) * currentCtx.viewport.height;
           const uvX = (localX - item.mesh.position.x) / (item.mesh.scale.x as number) + 0.5;
           const uvY = (localY - item.mesh.position.y) / (item.mesh.scale.y as number) + 0.5;
-          // Program is shared across copies — updates all at once
           item.program.uniforms.uMouse.value = [
             Math.max(0, Math.min(1, uvX)),
             Math.max(0, Math.min(1, uvY)),
           ];
           gsap.to(item.program.uniforms.uHover, {
-            value: 1,
-            duration: 0.4,
-            ease: 'power2.out',
-            overwrite: true,
+            value: 1, duration: 0.4, ease: 'power2.out', overwrite: true,
           });
         } else {
           gsap.to(item.program.uniforms.uHover, {
-            value: 0,
-            duration: 0.4,
-            ease: 'power2.out',
-            overwrite: true,
+            value: 0, duration: 0.4, ease: 'power2.out', overwrite: true,
           });
         }
       });
@@ -374,53 +474,27 @@ export const useInfiniteGridMode = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
 
-      // Always remove duplicates
-      duplicateMeshesRef.current.forEach((m) => m.setParent(null));
-      duplicateMeshesRef.current = [];
-
-      // Remove primaries (skipped if transition controller took ownership via src.length = 0)
-      meshesRef.current.forEach((item) => {
-        item.mesh.setParent(null);
-      });
+      // Only remove pool meshes if transition hasn't taken ownership
+      if (!takenOver) {
+        pool.forEach((slot) => slot.mesh.setParent(null));
+      }
       meshesRef.current = [];
-      allTilesRef.current = [];
       layoutRef.current = null;
     };
-  }, [active, texturesLoaded, getContext, projects, textures, onHover, onNavigate]);
+  }, [active, texturesLoaded, getContext, projects, textures, onHover, onNavigate, markVisible, requestFull, getTier]);
 
-  // ---- resize ----
+  // ── Resize ──
   useEffect(() => {
     if (!active) return;
 
     const handleResize = () => {
       const ctx = getContext();
-      if (!ctx || !layoutRef.current) return;
+      if (!ctx) return;
       const { viewport } = ctx;
 
       const newLayout = buildLayout(projects, viewport.width, viewport.height);
       layoutRef.current = newLayout;
-
-      const { repeatW, repeatH } = newLayout;
-      const tileOffsets: [number, number][] = [
-        [0, 0],
-        [repeatW, 0],
-        [0, -repeatH],
-        [repeatW, -repeatH],
-      ];
-
-      // Update all tiles: for each base position, update its 4 copies
-      newLayout.positions.forEach((pos, baseIdx) => {
-        tileOffsets.forEach(([dx, dy], copyIdx) => {
-          const tile = allTilesRef.current[baseIdx * 4 + copyIdx];
-          if (!tile) return;
-          tile.tileX = pos.x + dx;
-          tile.tileY = pos.y + dy;
-          tile.cellW = pos.w;
-          tile.cellH = pos.h;
-          tile.mesh.scale.set(pos.w, pos.h, 1);
-          tile.program.uniforms.uMeshSize.value = [pos.w, pos.h];
-        });
-      });
+      // Pool meshes will be repositioned/resized on next tick via assignSlot
     };
 
     window.addEventListener('resize', handleResize);
@@ -431,5 +505,6 @@ export const useInfiniteGridMode = ({
     getMeshes: () => meshesRef.current,
     getLayout: () => layoutRef.current,
     getScroll: () => ({ ...scrollRef.current }),
+    takeOwnership: () => takeOwnershipRef.current?.() ?? [],
   };
 };

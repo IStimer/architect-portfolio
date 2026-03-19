@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import gsap from 'gsap';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
-import { ProjectData, projectsData } from '../../data/projectsData';
+import type { ProjectData } from '../../types';
 import useMatchMedia from '../../hooks/useMatchMedia';
 import { useProgressiveBackground } from '../../hooks/useProgressiveBackground';
 import { useProjectHeroAnimation } from '../../hooks/useProjectHeroAnimation';
@@ -51,10 +51,11 @@ const ProjectHeroInfoBlock = ({ project, t }: { project: ProjectData; t: (key: s
 
 interface ProjectHeroProps {
   project: ProjectData;
+  totalProjects: number;
   onBack: () => void;
 }
 
-export const ProjectHero = ({ project, onBack }: ProjectHeroProps) => {
+export const ProjectHero = ({ project, totalProjects, onBack }: ProjectHeroProps) => {
   const { t } = useTranslation('common');
   const { style: heroBgStyle, isLoaded: heroImageLoaded } = useProgressiveBackground(project.heroImage);
   const isMobile = useMatchMedia('(max-width: 767px)');
@@ -93,7 +94,7 @@ export const ProjectHero = ({ project, onBack }: ProjectHeroProps) => {
           <span className="project-hero__back-text">{t('nav.back')}</span>
         </button>
         <div className="project-hero__counter">
-          {String(project.id).padStart(2, '0')} — {String(projectsData.length).padStart(2, '0')}
+          {String(project.id).padStart(2, '0')} — {String(totalProjects).padStart(2, '0')}
         </div>
       </div>
 
