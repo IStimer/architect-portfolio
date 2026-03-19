@@ -48,6 +48,7 @@ interface OpeningAnimationProps {
   projects: ProjectData[];
   textures: Map<string, TextureEntry>;
   texturesLoaded: boolean;
+  currentIndex: number;
   onComplete: () => void;
   markVisible?: (slugs: Set<string>) => void;
 }
@@ -78,6 +79,7 @@ export const useOpeningAnimation = ({
   projects,
   textures,
   texturesLoaded,
+  currentIndex,
   onComplete,
   markVisible,
 }: OpeningAnimationProps): OpeningAnimationHandle => {
@@ -90,6 +92,8 @@ export const useOpeningAnimation = ({
   onCompleteRef.current = onComplete;
   const markVisibleRef = useRef(markVisible);
   markVisibleRef.current = markVisible;
+  const currentIndexRef = useRef(currentIndex);
+  currentIndexRef.current = currentIndex;
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
   const texturesRef = useRef(textures);
@@ -139,14 +143,15 @@ export const useOpeningAnimation = ({
     }
 
     // ── Project assignment — interleaved for Phase 3 fill ──
+    const targetIndex = currentIndexRef.current;
     const half = Math.floor(CENTER_ROWS / 2);
     const sliderSize = Math.min(CENTER_ROWS, N);
     const centerCount = Math.ceil(sliderSize / 2);
 
-    // Full slider sequence: e.g. [26, 27, 28, 29, 0, 1, 2, 3, 4]
+    // Slider sequence centered on targetIndex
     const sliderSequence: number[] = [];
     for (let i = -half; i < -half + sliderSize; i++) {
-      sliderSequence.push(((i % N) + N) % N);
+      sliderSequence.push(((targetIndex + i) % N + N) % N);
     }
 
     // Center: even-indexed positions [26, 28, 0, 2, 4]
@@ -169,8 +174,10 @@ export const useOpeningAnimation = ({
       if (!usedIndices.has(i) && !fillSet.has(i)) extraProjects.push(i);
     }
     extraProjects.sort((a, b) => {
-      const distA = Math.min(a, N - a);
-      const distB = Math.min(b, N - b);
+      const dA = ((a - targetIndex) % N + N) % N;
+      const distA = Math.min(dA, N - dA);
+      const dB = ((b - targetIndex) % N + N) % N;
+      const distB = Math.min(dB, N - dB);
       return distB - distA;
     });
 
@@ -381,9 +388,9 @@ export const useOpeningAnimation = ({
       }
     });
 
-    // Target Y: circular slider position relative to project 0
+    // Target Y: circular slider position relative to targetIndex
     function projectTargetY(projectIndex: number): number {
-      let offset = projectIndex;
+      let offset = ((projectIndex - targetIndex) % N + N) % N;
       if (offset > N / 2) offset -= N;
       return -offset * slideH;
     }

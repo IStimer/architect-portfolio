@@ -53,6 +53,7 @@ const OGLCanvas = ({
     projects,
     textures,
     texturesLoaded,
+    currentIndex,
     onComplete: onOpeningComplete ?? (() => {}),
     markVisible,
   });
