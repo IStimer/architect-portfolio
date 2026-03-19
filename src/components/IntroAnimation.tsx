@@ -11,9 +11,10 @@ gsap.registerPlugin(SplitText);
 interface IntroAnimationProps {
   onComplete?: () => void;
   onUnlock?: () => void;
+  exiting?: boolean;
 }
 
-const IntroAnimation = ({ onUnlock }: IntroAnimationProps) => {
+const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
   const { t } = useTranslation(['home', 'common']);
   const [canClick, setCanClick] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -148,18 +149,14 @@ const IntroAnimation = ({ onUnlock }: IntroAnimationProps) => {
       scrambleOut(textEl, { duration: 0.8 });
     }
 
-    const unlockDelay = prefersReducedMotion() ? 0 : 0.8;
-    delayedCallsRef.current.push(
-      gsap.delayedCall(unlockDelay, () => {
-        if (onUnlock) onUnlock();
-      })
-    );
+    // Call onUnlock immediately — the opening animation starts behind the fading text
+    if (onUnlock) onUnlock();
   }, [canClick, onUnlock]);
 
   return (
     <div
       ref={containerRef}
-      className={`intro-animation ${canClick ? 'clickable' : ''}`}
+      className={`intro-animation ${canClick ? 'clickable' : ''}${exiting ? ' intro-animation--exiting' : ''}`}
     >
         <div
           ref={welcomeRef}

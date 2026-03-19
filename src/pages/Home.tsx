@@ -21,13 +21,17 @@ const Home = () => {
   const { state, setIntroCompleted } = useAppState();
   const { projects, categories } = useProjects(currentLang as 'fr' | 'en');
 
-  const [viewMode, setViewMode] = useState<ViewMode>('slider');
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    state.introCompleted ? 'slider' : 'opening'
+  );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [openingActive, setOpeningActive] = useState(false);
+  const [showIntroOverlay, setShowIntroOverlay] = useState(!state.introCompleted);
 
-  const showIntro = !state.introCompleted;
-  const canvasActive = !showIntro;
+  const showIntro = showIntroOverlay;
+  const canvasActive = !showIntro || openingActive;
 
   // Filter projects by active category
   const filteredProjects = useMemo(() => {
@@ -37,7 +41,21 @@ const Home = () => {
 
   const handleUnlock = useCallback(() => {
     setIntroCompleted();
+    setViewMode('opening');
+    setOpeningActive(true);
+    // Fade out intro text overlay after a short delay
+    setTimeout(() => setShowIntroOverlay(false), 1000);
   }, [setIntroCompleted]);
+
+  const handleOpeningComplete = useCallback(() => {
+    setOpeningActive(false);
+    setViewMode('slider');
+  }, []);
+
+  const handleReplayOpening = useCallback(() => {
+    setViewMode('opening');
+    setOpeningActive(true);
+  }, []);
 
   // Stop Lenis on mount, start on unmount
   useEffect(() => {
@@ -51,7 +69,7 @@ const Home = () => {
     setViewMode((prev) => {
       if (prev === 'slider') return 'transitioning-to-grid';
       if (prev === 'grid') return 'transitioning-to-slider';
-      return prev; // ignore during transition
+      return prev; // ignore during transition or opening
     });
     setHoveredSlug(null);
   }, []);
@@ -76,7 +94,6 @@ const Home = () => {
   );
 
   const handleJumpTo = useCallback((index: number) => {
-    // Access the canvas element's jumpTo function
     const canvasEl = document.querySelector('.ogl-canvas') as any;
     if (canvasEl?.__jumpTo) {
       canvasEl.__jumpTo(index);
@@ -91,6 +108,7 @@ const Home = () => {
 
   const isSliderVisible = viewMode === 'slider' || viewMode === 'transitioning-to-grid';
   const isGridVisible = viewMode === 'grid' || viewMode === 'transitioning-to-slider';
+  const isOpening = viewMode === 'opening';
 
   return (
     <>
@@ -99,9 +117,14 @@ const Home = () => {
         description={t('home:seo.description')}
         path={localizedPath(currentLang, 'home')}
       />
-      {showIntro && <IntroAnimation onUnlock={handleUnlock} />}
+      {showIntroOverlay && (
+        <IntroAnimation
+          onUnlock={handleUnlock}
+          exiting={openingActive}
+        />
+      )}
 
-      <main className={`page-content home-page${showIntro ? ' home-page--hidden' : ''}`}>
+      <main className={`page-content home-page${showIntro && !openingActive ? ' home-page--hidden' : ''}`}>
         <OGLCanvas
           active={canvasActive}
           viewMode={viewMode}
@@ -111,31 +134,43 @@ const Home = () => {
           onHover={handleHover}
           onNavigate={handleNavigate}
           onTransitionComplete={handleTransitionComplete}
+          openingActive={openingActive}
+          onOpeningComplete={handleOpeningComplete}
         />
 
-        <SliderOverlay
-          active={canvasActive && isSliderVisible}
-          currentIndex={currentIndex}
-          projects={filteredProjects}
-          onJumpTo={handleJumpTo}
-        />
+        {!isOpening && (
+          <>
+            <SliderOverlay
+              active={canvasActive && isSliderVisible}
+              currentIndex={currentIndex}
+              projects={filteredProjects}
+              onJumpTo={handleJumpTo}
+            />
 
-        <GridOverlay
-          active={canvasActive && isGridVisible}
-          hoveredSlug={hoveredSlug}
-          projects={filteredProjects}
-        />
+            <GridOverlay
+              active={canvasActive && isGridVisible}
+              hoveredSlug={hoveredSlug}
+              projects={filteredProjects}
+            />
 
-        {categories.length > 0 && (
-          <CategoryFilter
-            categories={categories}
-            activeSlug={activeCategory}
-            lang={currentLang as 'fr' | 'en'}
-            onFilter={handleCategoryFilter}
-          />
+            {categories.length > 0 && (
+              <CategoryFilter
+                categories={categories}
+                activeSlug={activeCategory}
+                lang={currentLang as 'fr' | 'en'}
+                onFilter={handleCategoryFilter}
+              />
+            )}
+
+            <ModeToggle viewMode={viewMode} onToggle={handleToggleMode} />
+          </>
         )}
 
-        <ModeToggle viewMode={viewMode} onToggle={handleToggleMode} />
+        {viewMode === 'slider' && !openingActive && (
+          <button className="home-page__replay-btn" onClick={handleReplayOpening}>
+            Replay
+          </button>
+        )}
 
         <footer className="home-page__footer">
           <button

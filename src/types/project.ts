@@ -49,4 +49,4 @@ export interface RectangleData {
   type: string;
 }
 
-export type ViewMode = 'slider' | 'grid' | 'transitioning-to-grid' | 'transitioning-to-slider';
+export type ViewMode = 'slider' | 'grid' | 'transitioning-to-grid' | 'transitioning-to-slider' | 'opening';

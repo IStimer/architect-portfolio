@@ -34,6 +34,7 @@ interface SliderModeProps {
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
   getTier?: (slug: string) => TextureTier;
+  initialMeshes?: SlideData[];
 }
 
 export interface SliderModeHandle {
@@ -71,6 +72,7 @@ export const useSliderMode = ({
   markVisible,
   requestFull,
   getTier,
+  initialMeshes,
 }: SliderModeProps): SliderModeHandle => {
   const slidesRef = useRef<SlideData[]>([]);
   const slidesSceneRef = useRef<Transform | null>(null);
@@ -172,48 +174,58 @@ export const useSliderMode = ({
     const raycast = new Raycast();
     raycastRef.current = raycast;
 
-    // ── Create WINDOW_SIZE meshes (shared geometry) ──
-    const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+    // ── Create or adopt WINDOW_SIZE meshes ──
     const actualCount = Math.min(WINDOW_SIZE, N);
     const slides: SlideData[] = [];
 
-    const fallbackTex = getPlaceholderTexture(gl);
+    if (initialMeshes && initialMeshes.length > 0) {
+      // Handoff from opening animation — reparent existing meshes
+      for (let i = 0; i < Math.min(initialMeshes.length, actualCount); i++) {
+        const hm = initialMeshes[i];
+        hm.mesh.setParent(slidesScene);
+        slides.push({ ...hm });
+      }
+    } else {
+      // Normal creation path
+      const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+      const fallbackTex = getPlaceholderTexture(gl);
 
-    for (let slot = 0; slot < actualCount; slot++) {
-      const program = new Program(gl, {
-        vertex: vertexShader,
-        fragment: fragmentShader,
-        uniforms: {
-          uTexture: { value: fallbackTex },
-          u_distortionAmount: { value: 0 },
-          u_parallax: { value: 0 },
-          uHover: { value: 0 },
-          uMouse: { value: [0.5, 0.5] },
-          uResolution: { value: [1, 1] },
-          uMeshSize: { value: [w, h] },
-          uAlpha: { value: 1.0 },
-          uTextureReady: { value: 1.0 },
-          uWind: { value: 0 },
-          uWindDir: { value: [0, 0] },
-        },
-        transparent: true,
-      });
+      for (let slot = 0; slot < actualCount; slot++) {
+        const program = new Program(gl, {
+          vertex: vertexShader,
+          fragment: fragmentShader,
+          uniforms: {
+            uTexture: { value: fallbackTex },
+            u_distortionAmount: { value: 0 },
+            u_parallax: { value: 0 },
+            uHover: { value: 0 },
+            uMouse: { value: [0.5, 0.5] },
+            uResolution: { value: [1, 1] },
+            uMeshSize: { value: [w, h] },
+            uAlpha: { value: 1.0 },
+            uTextureReady: { value: 1.0 },
+            uWind: { value: 0 },
+            uWindDir: { value: [0, 0] },
+          },
+          transparent: true,
+        });
 
-      const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
-      mesh.scale.set(w, h, 1);
-      mesh.position.set(centerX, 0, 0);
-      mesh.setParent(slidesScene);
+        const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
+        mesh.scale.set(w, h, 1);
+        mesh.position.set(centerX, 0, 0);
+        mesh.setParent(slidesScene);
 
-      slides.push({
-        mesh,
-        program,
-        slug: '',
-        baseY: 0,
-        width: w,
-        height: h,
-        xOffset: 0,
-        projectIndex: -1,
-      });
+        slides.push({
+          mesh,
+          program,
+          slug: '',
+          baseY: 0,
+          width: w,
+          height: h,
+          xOffset: 0,
+          projectIndex: -1,
+        });
+      }
     }
 
     slidesRef.current = slides;
@@ -474,7 +486,7 @@ export const useSliderMode = ({
       renderTargetRef.current = null;
       raycastRef.current = null;
     };
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, jumpTo, markVisible, requestFull, getTier]);
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, jumpTo, markVisible, requestFull, getTier, initialMeshes]);
 
   // ── Resize ──
   useEffect(() => {

@@ -4,6 +4,7 @@ import { useTextureManager } from '../../hooks/useTextureManager';
 import { useSliderMode } from '../../hooks/useSliderMode';
 import { useInfiniteGridMode } from '../../hooks/useInfiniteGridMode';
 import { useTransitionController } from '../../hooks/useTransitionController';
+import { useOpeningAnimation } from '../../hooks/useOpeningAnimation';
 import type { ViewMode, ProjectData } from '../../types';
 
 interface OGLCanvasProps {
@@ -15,6 +16,8 @@ interface OGLCanvasProps {
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
+  openingActive?: boolean;
+  onOpeningComplete?: () => void;
 }
 
 const OGLCanvas = ({
@@ -26,6 +29,8 @@ const OGLCanvas = ({
   onHover,
   onNavigate,
   onTransitionComplete,
+  openingActive = false,
+  onOpeningComplete,
 }: OGLCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const jumpToRef = useRef<((index: number) => void) | null>(null);
@@ -41,11 +46,24 @@ const OGLCanvas = ({
     getTier,
   } = useTextureManager(gl, projects);
 
-  // Initialize slider even during intro so textures are ready when it ends.
-  // The slider renders to a RenderTarget (not screen), so it's invisible until active.
-  const sliderShouldInit = ready && (viewMode === 'slider' || viewMode === 'transitioning-to-grid');
-  const sliderActive = sliderShouldInit; // always run if mode matches — visibility controlled by overlay opacity
+  // Opening animation
+  const openingHandle = useOpeningAnimation({
+    getContext,
+    active: openingActive && ready,
+    projects,
+    textures,
+    texturesLoaded,
+    onComplete: onOpeningComplete ?? (() => {}),
+    markVisible,
+  });
+
+  // Slider should not init during opening animation
+  const sliderShouldInit = ready && !openingActive && (viewMode === 'slider' || viewMode === 'transitioning-to-grid');
+  const sliderActive = sliderShouldInit;
   const gridActive = active && ready && (viewMode === 'grid' || viewMode === 'transitioning-to-slider');
+
+  // Get handoff meshes from opening animation (if available)
+  const handoffSlides = openingHandle.getHandoffSlides();
 
   const sliderHandle = useSliderMode({
     getContext,
@@ -59,6 +77,7 @@ const OGLCanvas = ({
     markVisible,
     requestFull,
     getTier,
+    initialMeshes: handoffSlides ?? undefined,
   });
 
   const handleGridHover = useCallback(
@@ -106,7 +125,6 @@ const OGLCanvas = ({
   }, []);
 
   // Attach to ref so parent can call it (via imperative handle pattern)
-  // We store it on the container's dataset for simplicity
   const containerCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
       (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
