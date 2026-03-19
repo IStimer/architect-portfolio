@@ -21,7 +21,6 @@ const SLIDE_SPACING = 0.04;
 const COL_SPACING_FRAC = 0.04;
 
 const PHASE1_DURATION = 1.0;
-const PHASE1_FADE_DURATION = 0.4;
 const PHASE1_COL_STAGGER = 0.15;
 const PHASE1_ROW_STAGGER = 0.03;
 
@@ -216,7 +215,7 @@ export const useOpeningAnimation = ({
           uMouse: { value: [0.5, 0.5] },
           uResolution: { value: entry ? [entry.width, entry.height] : [1, 1] },
           uMeshSize: { value: [meshW, meshH] },
-          uAlpha: { value: 0 },
+          uAlpha: { value: 1 },
           uTextureReady: { value: entry ? 1.0 : 0.3 },
           uWind: { value: 0 },
           uWindDir: { value: [0, 0] },
@@ -298,11 +297,6 @@ export const useOpeningAnimation = ({
         tl.fromTo(cm.mesh.position,
           { y: startY },
           { y: baseY, duration: PHASE1_DURATION, ease: 'power3.out' },
-          `phase1+=${meshDelay}`
-        );
-        tl.fromTo(cm.program.uniforms.uAlpha,
-          { value: 0 },
-          { value: 1, duration: PHASE1_FADE_DURATION, ease: 'power2.out' },
           `phase1+=${meshDelay}`
         );
       });
