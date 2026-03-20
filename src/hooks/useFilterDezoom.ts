@@ -25,6 +25,72 @@ const SLIDE_IN_COL_STAGGER = 0.08;
 const REZOOM_DURATION = 1.2;
 const MOSAIC_PADDING = 1.15;
 
+// ── Batch tween helper ────────────────────────────────────────────
+
+function power3InOut(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+interface BatchItem {
+  mesh: Mesh;
+  program: Program;
+  endX: number;
+  endY: number;
+  delay: number; // seconds (absolute, not normalized)
+  startX: number;
+  startY: number;
+}
+
+/**
+ * Single proxy tween that drives N mesh positions.
+ * Positions are captured in onStart (when tween actually plays, not at build time).
+ * Stagger is in seconds — each mesh starts its transition at `delay` after the proxy starts.
+ * Each mesh animates for `itemDuration` seconds with power3.inOut easing.
+ * Total proxy duration = itemDuration + max(delay).
+ */
+function addBatchPositionTween(
+  tl: gsap.core.Timeline,
+  label: string,
+  itemDuration: number,
+  items: BatchItem[],
+  distortion = 0,
+): number {
+  if (items.length === 0) return 0;
+  const maxDelay = items.reduce((m, b) => Math.max(m, b.delay), 0);
+  const totalDuration = itemDuration + maxDelay;
+  const proxy = { t: 0 };
+
+  tl.fromTo(proxy, { t: 0 }, {
+    t: totalDuration,
+    duration: totalDuration,
+    ease: 'none',
+    onStart: () => {
+      // Capture actual positions at the moment the tween starts playing
+      for (let i = 0; i < items.length; i++) {
+        items[i].startX = items[i].mesh.position.x as number;
+        items[i].startY = items[i].mesh.position.y as number;
+      }
+    },
+    onUpdate: () => {
+      const elapsed = proxy.t;
+      for (let i = 0; i < items.length; i++) {
+        const b = items[i];
+        const localElapsed = elapsed - b.delay;
+        if (localElapsed <= 0) continue; // hasn't started yet
+        const raw = Math.min(localElapsed / itemDuration, 1);
+        const eased = power3InOut(raw);
+        b.mesh.position.x = b.startX + (b.endX - b.startX) * eased;
+        b.mesh.position.y = b.startY + (b.endY - b.startY) * eased;
+        if (distortion > 0) {
+          b.program.uniforms.u_distortionAmount.value = Math.sin(raw * Math.PI) * distortion;
+        }
+      }
+    },
+  }, label);
+
+  return totalDuration;
+}
+
 // ── Interfaces ────────────────────────────────────────────────────
 
 interface ColumnMesh {
@@ -334,18 +400,16 @@ export const useFilterDezoom = ({
     }, 'dezoom');
 
     if (comingFromFiltered) {
-      // Current column glides to its mosaic position DURING the dezoom
+      // Batch: current column + slide-in columns, all during dezoom
+      const dezoomItems: BatchItem[] = [];
+
+      // Current column → mosaic positions (delay=0)
       currentColMeshes.forEach((cm) => {
         const mosaic = mosaicPositions.get(cm.projectIndex)!;
-        tl.to(cm.mesh.position, {
-          x: mosaic.x,
-          y: mosaic.y,
-          duration: DEZOOM_DURATION,
-          ease: 'power3.inOut',
-        }, 'dezoom');
+        dezoomItems.push({ mesh: cm.mesh, program: cm.program, endX: mosaic.x, endY: mosaic.y, delay: 0, startX: 0, startY: 0 });
       });
 
-      // Other columns slide in simultaneously during the dezoom
+      // Other columns slide in with column stagger
       const otherColIndicesIn = Array.from({ length: numCats }, (_, i) => i)
         .filter((c) => c !== currentColIdx)
         .sort((a, b) => Math.abs(a - currentColIdx) - Math.abs(b - currentColIdx));
@@ -354,18 +418,15 @@ export const useFilterDezoom = ({
         const colMeshes = slideInMeshes.filter(
           (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
         );
-        if (colMeshes.length === 0) return;
         const colDelay = orderIdx * SLIDE_IN_COL_STAGGER;
-
         colMeshes.forEach((cm) => {
           const mosaic = mosaicPositions.get(cm.projectIndex)!;
-          tl.to(cm.mesh.position, {
-            y: mosaic.y,
-            duration: DEZOOM_DURATION,
-            ease: 'power3.inOut',
-          }, `dezoom+=${colDelay}`);
+          // endX = current X (already at mosaic.x), only Y changes
+          dezoomItems.push({ mesh: cm.mesh, program: cm.program, endX: mosaic.x, endY: mosaic.y, delay: colDelay, startX: 0, startY: 0 });
         });
       });
+
+      addBatchPositionTween(tl, 'dezoom', DEZOOM_DURATION, dezoomItems);
     }
 
     t += DEZOOM_DURATION + 0.2;
@@ -379,39 +440,22 @@ export const useFilterDezoom = ({
       // Already formed during dezoom — skip
       // (t already advanced past dezoom)
     } else {
-      // From unfiltered: glide center column to mosaic
+      // From unfiltered: glide center column to mosaic (1 batch with stagger + distortion)
       const meshesWithTarget = allMeshes.map((cm) => ({
         cm,
         target: mosaicPositions.get(cm.projectIndex)!,
       }));
       meshesWithTarget.sort((a, b) => Math.abs(a.target.x) - Math.abs(b.target.x));
-      const glideStaggerTotal = (meshesWithTarget.length - 1) * GLIDE_STAGGER;
 
-      const glideProxy = { t: 0 };
-      const allCms = meshesWithTarget.map(({ cm }) => cm);
+      const glideItems: BatchItem[] = meshesWithTarget.map(({ cm, target }, idx) => ({
+        mesh: cm.mesh, program: cm.program,
+        endX: target.x, endY: target.y,
+        delay: idx * GLIDE_STAGGER,
+        startX: 0, startY: 0,
+      }));
 
-      meshesWithTarget.forEach(({ cm, target }, idx) => {
-        tl.to(cm.mesh.position, {
-          x: target.x,
-          y: target.y,
-          duration: GLIDE_DURATION,
-          ease: 'power3.inOut',
-        }, `form+=${idx * GLIDE_STAGGER}`);
-      });
-
-      tl.fromTo(glideProxy, { t: 0 }, {
-        t: 1,
-        duration: GLIDE_DURATION,
-        ease: 'none',
-        onUpdate: () => {
-          const arc = Math.sin(glideProxy.t * Math.PI) * 0.8;
-          for (let i = 0; i < allCms.length; i++) {
-            allCms[i].program.uniforms.u_distortionAmount.value = arc;
-          }
-        },
-      }, 'form');
-
-      t += GLIDE_DURATION + glideStaggerTotal + 0.2;
+      const glideTotalDuration = addBatchPositionTween(tl, 'form', GLIDE_DURATION, glideItems, 0.8);
+      t += glideTotalDuration + 0.2;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -422,37 +466,19 @@ export const useFilterDezoom = ({
     tl.addLabel('exit', t);
 
     if (goingToAll) {
-      // ── To All: converge all columns back to center column ──
-      const convergeProxy = { t: 0 };
-      const allCms = allMeshes;
-
-      allMeshes.forEach((cm) => {
-        // Center column Y: circular, centered on project 0
-        let d = cm.projectIndex - 0; // centered on index 0
+      // ── To All: converge all columns back to center column (1 batch) ──
+      const convergeItems: BatchItem[] = allMeshes.map((cm) => {
+        let d = cm.projectIndex;
         if (d > N / 2) d -= N;
         if (d < -N / 2) d += N;
-        const centerY = -d * slideH;
-
-        tl.to(cm.mesh.position, {
-          x: centerX,
-          y: centerY,
-          duration: GLIDE_DURATION,
-          ease: 'power3.inOut',
-        }, 'exit');
+        return {
+          mesh: cm.mesh, program: cm.program,
+          endX: centerX, endY: -d * slideH,
+          delay: 0, startX: 0, startY: 0,
+        };
       });
 
-      tl.fromTo(convergeProxy, { t: 0 }, {
-        t: 1,
-        duration: GLIDE_DURATION,
-        ease: 'none',
-        onUpdate: () => {
-          const arc = Math.sin(convergeProxy.t * Math.PI) * 0.8;
-          for (let i = 0; i < allCms.length; i++) {
-            allCms[i].program.uniforms.u_distortionAmount.value = arc;
-          }
-        },
-      }, 'exit');
-
+      addBatchPositionTween(tl, 'exit', GLIDE_DURATION, convergeItems, 0.8);
       t += GLIDE_DURATION + 0.1;
 
       // Rezoom
@@ -507,45 +533,86 @@ export const useFilterDezoom = ({
       }, [], t);
 
     } else {
-      // ── To specific filter: slide-out + rezoom simultaneously ──
+      // ── To specific filter: slide-out + rezoom simultaneously (1 batch) ──
+      const exitItems: BatchItem[] = [];
+
+      // Slide-out: non-selected columns with column stagger
+      // endY is relative (+=slideOutY), so we compute it in onStart via a wrapper
       const otherColIndicesOut = Array.from({ length: numCats }, (_, i) => i)
         .filter((c) => c !== selectedColIdx)
         .sort((a, b) => Math.abs(a - selectedColIdx) - Math.abs(b - selectedColIdx));
 
-      // Slide out non-selected columns
+      // Pre-compute slideOut offsets per column (relative)
+      const slideOutOffsets = new Map<number, number>();
+      otherColIndicesOut.forEach((colIdx) => {
+        const dir = colIdx < selectedColIdx ? -1 : 1;
+        slideOutOffsets.set(colIdx, dir * (vpDezoomH + maxColHeight));
+      });
+
       otherColIndicesOut.forEach((colIdx, orderIdx) => {
         const colMeshes = otherMeshesForExit.filter(
           (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
         );
-        if (colMeshes.length === 0) return;
-        const dir = colIdx < selectedColIdx ? -1 : 1;
-        const slideOutY = dir * (vpDezoomH + maxColHeight);
         const colDelay = orderIdx * SLIDE_OUT_COL_STAGGER;
+        const offset = slideOutOffsets.get(colIdx)!;
         colMeshes.forEach((cm) => {
-          tl.to(cm.mesh.position, {
-            y: `+=${slideOutY}`,
-            duration: REZOOM_DURATION,
-            ease: 'power3.inOut',
-          }, `exit+=${colDelay}`);
+          // endX/endY = 0 as placeholder — computed from startY + offset in onStart wrapper below
+          exitItems.push({ mesh: cm.mesh, program: cm.program, endX: 0, endY: offset, delay: colDelay, startX: 0, startY: 0 });
         });
       });
 
-      // Rezoom + shift selected column — same timing as slide-out
+      // Selected column shifts to centerX (delay=0, Y unchanged)
+      selectedMeshes.forEach((cm) => {
+        exitItems.push({ mesh: cm.mesh, program: cm.program, endX: centerX, endY: 0, delay: 0, startX: 0, startY: 0 });
+      });
+
+      // Custom batch: slideOut items use relative Y, selected use absolute X
+      const selectedSet = new Set(selectedMeshes.map((cm) => cm.mesh));
+      const maxDelay = exitItems.reduce((m, b) => Math.max(m, b.delay), 0);
+      const totalDuration = REZOOM_DURATION + maxDelay;
+      const exitProxy = { t: 0 };
+
+      tl.fromTo(exitProxy, { t: 0 }, {
+        t: totalDuration,
+        duration: totalDuration,
+        ease: 'none',
+        onStart: () => {
+          for (let i = 0; i < exitItems.length; i++) {
+            const b = exitItems[i];
+            b.startX = b.mesh.position.x as number;
+            b.startY = b.mesh.position.y as number;
+            if (selectedSet.has(b.mesh)) {
+              // Selected: endX is absolute centerX, Y unchanged
+              b.endY = b.startY;
+            } else {
+              // SlideOut: endY is relative offset from current position
+              b.endY = b.startY + b.endY; // endY was storing the offset
+              b.endX = b.startX; // X unchanged
+            }
+          }
+        },
+        onUpdate: () => {
+          const elapsed = exitProxy.t;
+          for (let i = 0; i < exitItems.length; i++) {
+            const b = exitItems[i];
+            const localElapsed = elapsed - b.delay;
+            if (localElapsed <= 0) continue;
+            const raw = Math.min(localElapsed / REZOOM_DURATION, 1);
+            const eased = power3InOut(raw);
+            b.mesh.position.x = b.startX + (b.endX - b.startX) * eased;
+            b.mesh.position.y = b.startY + (b.endY - b.startY) * eased;
+          }
+        },
+      }, 'exit');
+
+      // Camera rezoom (1 tween — no batch needed)
       tl.to(camera.position, {
         z: 5,
         duration: REZOOM_DURATION,
         ease: 'power3.inOut',
       }, 'exit');
 
-      selectedMeshes.forEach((cm) => {
-        tl.to(cm.mesh.position, {
-          x: centerX,
-          duration: REZOOM_DURATION,
-          ease: 'power3.inOut',
-        }, 'exit');
-      });
-
-      t += REZOOM_DURATION + 0.05;
+      t += totalDuration + 0.05;
 
       // On complete — handoff selected column to slider
       const selectedColProjects = projectsByCol[selectedColIdx];
