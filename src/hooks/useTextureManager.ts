@@ -120,6 +120,14 @@ export function useTextureManager(
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
 
+  // O(1) slug→project lookup (rebuilt when projects change)
+  const projectBySlugRef = useRef<Map<string, ProjectData>>(new Map());
+  useEffect(() => {
+    const map = new Map<string, ProjectData>();
+    projects.forEach((p) => map.set(p.slug, p));
+    projectBySlugRef.current = map;
+  }, [projects]);
+
   // ── Initialize: create one Texture per slug with placeholder ──
   useEffect(() => {
     if (!gl || projects.length === 0) return;
@@ -167,38 +175,49 @@ export function useTextureManager(
     });
 
     // Mark loaded once all LQIPs are decoded (or immediately if none)
+    const preloadCount = Math.min(9, projects.length);
+
     Promise.all(lqipPromises).then(() => {
       setLoaded(true);
 
       // Pre-load thumbnails for the initial slider window (~9 projects)
       // so textures are ready when the intro animation ends
-      const preloadCount = Math.min(9, projects.length);
-      for (let i = 0; i < preloadCount; i++) {
-        const slug = projects[i].slug;
+      function loadThumb(slug: string, url: string, priority: LoadPriority) {
         const m = meta.get(slug);
-        if (m && m.tier < TextureTier.THUMBNAIL && !m.loading) {
-          const url = projects[i].thumbnailUrl ?? projects[i].heroImage;
-          if (!url) continue;
-          m.loading = TextureTier.THUMBNAIL;
-          const { promise } = enqueueLoad(slug, url, LoadPriority.VISIBLE);
-          promise.then((img) => {
-            const entry = map.get(slug);
-            const slotMeta = meta.get(slug);
-            if (!entry || !slotMeta || !glRef.current) return;
-            entry.texture.image = img;
-            entry.texture.generateMipmaps = true;
-            entry.texture.needsUpdate = true;
-            entry.width = img.naturalWidth;
-            entry.height = img.naturalHeight;
-            slotMeta.tier = TextureTier.THUMBNAIL;
-            slotMeta.gpuBytes = gpuForTier(TextureTier.THUMBNAIL);
-            slotMeta.loading = null;
-          }).catch(() => {
-            const slotMeta = meta.get(slug);
-            if (slotMeta) slotMeta.loading = null;
-          });
-        }
+        if (!m || m.tier >= TextureTier.THUMBNAIL || m.loading) return;
+        m.loading = TextureTier.THUMBNAIL;
+        const { promise } = enqueueLoad(slug, url, priority);
+        promise.then((img) => {
+          const entry = map.get(slug);
+          const slotMeta = meta.get(slug);
+          if (!entry || !slotMeta || !glRef.current) return;
+          entry.texture.image = img;
+          entry.texture.generateMipmaps = true;
+          entry.texture.needsUpdate = true;
+          entry.width = img.naturalWidth;
+          entry.height = img.naturalHeight;
+          slotMeta.tier = TextureTier.THUMBNAIL;
+          slotMeta.gpuBytes = gpuForTier(TextureTier.THUMBNAIL);
+          slotMeta.loading = null;
+        }).catch(() => {
+          const slotMeta = meta.get(slug);
+          if (slotMeta) slotMeta.loading = null;
+        });
       }
+
+      for (let i = 0; i < preloadCount; i++) {
+        const url = projects[i].thumbnailUrl ?? projects[i].heroImage;
+        if (url) loadThumb(projects[i].slug, url, LoadPriority.VISIBLE);
+      }
+
+      // Preload remaining thumbnails at low priority after a short delay
+      // so they're cached when the user triggers a filter transition
+      setTimeout(() => {
+        for (let i = preloadCount; i < projects.length; i++) {
+          const url = projects[i].thumbnailUrl ?? projects[i].heroImage;
+          if (url) loadThumb(projects[i].slug, url, LoadPriority.BUFFER);
+        }
+      }, 500);
     });
 
     // If no LQIP data at all (fallback mode), mark loaded immediately
@@ -258,7 +277,7 @@ export function useTextureManager(
       if (meta.tier >= tier) return;
       if (meta.loading && meta.loading >= tier) return;
 
-      const project = projectsRef.current.find((p) => p.slug === slug);
+      const project = projectBySlugRef.current.get(slug);
       if (!project) return;
 
       const url = getImageUrl(project, tier);

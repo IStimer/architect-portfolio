@@ -101,6 +101,7 @@ export const useSliderMode = ({
   const mouseRef = useRef(new Vec2());
   const raycastRef = useRef<Raycast | null>(null);
   const hoveredRef = useRef<string | null>(null);
+  const prevVisibleRef = useRef<string>(''); // joined slug string for fast comparison
 
   // Slide height in world units (computed once on setup, updated on resize)
   const slideHeightRef = useRef(0);
@@ -250,6 +251,9 @@ export const useSliderMode = ({
         slot.program.uniforms.uResolution.value = [entry.width, entry.height];
       }
 
+      // Request full-res on slot reassignment (not every frame)
+      requestFull?.(slot.slug);
+
       // Reset hover for recycled slot
       slot.program.uniforms.uHover.value = 0;
     }
@@ -317,11 +321,10 @@ export const useSliderMode = ({
         slides[i].mesh.position.y = y;
         slides[i].baseY = y; // for transition controller snapshot
 
-        // Visibility — request full-res for all visible slides (not just hovered)
+        // Visibility tracking (requestFull only on slot reassignment, not every frame)
         const inView = Math.abs(y) < curCtx.viewport.height * 1.5;
         if (inView) {
           visibleSlugs.add(slides[i].slug);
-          requestFull?.(slides[i].slug);
         }
 
         // Update texture resolution if tier upgraded
@@ -352,7 +355,12 @@ export const useSliderMode = ({
         }
       }
 
-      markVisible?.(visibleSlugs);
+      // Only call markVisible when the visible set actually changes
+      const visibleKey = Array.from(visibleSlugs).sort().join(',');
+      if (visibleKey !== prevVisibleRef.current) {
+        prevVisibleRef.current = visibleKey;
+        markVisible?.(visibleSlugs);
+      }
 
       if (closestIndex !== activeIndexRef.current) {
         activeIndexRef.current = closestIndex;

@@ -48,9 +48,13 @@ function loadImage(entry: QueueEntry) {
 
   img.onload = () => {
     entry.abortController.signal.removeEventListener('abort', onAbort);
-    activeCount--;
-    entry.resolve(img);
-    flush();
+    // Decode off main thread before resolving — prevents decode jank during animation
+    const finish = () => { activeCount--; entry.resolve(img); flush(); };
+    if (img.decode) {
+      img.decode().then(finish, finish);
+    } else {
+      finish();
+    }
   };
 
   img.onerror = () => {
