@@ -1,6 +1,9 @@
 /**
  * Priority-based image load queue with concurrency limit.
  * Hover > Visible > Buffer ordering ensures interactive textures load first.
+ *
+ * Uses 3 priority buckets instead of sorting — O(1) insert, O(1) dequeue.
+ * Concurrency adapts to network conditions via navigator.connection.
  */
 
 export const enum LoadPriority {
@@ -18,16 +21,62 @@ interface QueueEntry {
   abortController: AbortController;
 }
 
-const MAX_CONCURRENT = 4;
+// ── Connection-aware concurrency ──────────────────────────────────
 
-let queue: QueueEntry[] = [];
+function getMaxConcurrent(): number {
+  const conn = (navigator as any).connection;
+  if (!conn) return 4; // default fallback
+  if (conn.saveData) return 1;
+  switch (conn.effectiveType) {
+    case '4g': return 6;
+    case '3g': return 3;
+    case '2g': return 1;
+    case 'slow-2g': return 1;
+    default: return 4;
+  }
+}
+
+let maxConcurrent = getMaxConcurrent();
+
+// Listen for connection changes
+if ((navigator as any).connection) {
+  (navigator as any).connection.addEventListener('change', () => {
+    maxConcurrent = getMaxConcurrent();
+  });
+}
+
+// ── 3-bucket priority queue ──────────────────────────────────────
+
+const buckets: [QueueEntry[], QueueEntry[], QueueEntry[]] = [[], [], []];
 let activeCount = 0;
 
+function queueLength(): number {
+  return buckets[0].length + buckets[1].length + buckets[2].length;
+}
+
+function dequeue(): QueueEntry | undefined {
+  // Highest priority first: HOVER(2) → VISIBLE(1) → BUFFER(0)
+  if (buckets[2].length > 0) return buckets[2].shift();
+  if (buckets[1].length > 0) return buckets[1].shift();
+  if (buckets[0].length > 0) return buckets[0].shift();
+  return undefined;
+}
+
+function removeSlug(slug: string): void {
+  for (let p = 0; p < 3; p++) {
+    const bucket = buckets[p];
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      if (bucket[i].slug === slug) {
+        bucket[i].abortController.abort();
+        bucket.splice(i, 1);
+      }
+    }
+  }
+}
+
 function flush() {
-  while (activeCount < MAX_CONCURRENT && queue.length > 0) {
-    // Sort descending by priority — highest first
-    queue.sort((a, b) => b.priority - a.priority);
-    const entry = queue.shift()!;
+  while (activeCount < maxConcurrent && queueLength() > 0) {
+    const entry = dequeue()!;
     activeCount++;
     loadImage(entry);
   }
@@ -80,15 +129,9 @@ export function enqueueLoad(
 
   const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     // Remove any existing entry for this slug (reprioritize)
-    queue = queue.filter((e) => {
-      if (e.slug === slug) {
-        e.abortController.abort();
-        return false;
-      }
-      return true;
-    });
+    removeSlug(slug);
 
-    queue.push({ slug, url, priority, resolve, reject, abortController });
+    buckets[priority].push({ slug, url, priority, resolve, reject, abortController });
     flush();
   });
 
@@ -99,19 +142,22 @@ export function enqueueLoad(
  * Update priority for a queued (not yet loading) entry.
  */
 export function reprioritize(slug: string, priority: LoadPriority) {
-  const entry = queue.find((e) => e.slug === slug);
-  if (entry) entry.priority = priority;
+  for (let p = 0; p < 3; p++) {
+    const bucket = buckets[p];
+    for (let i = 0; i < bucket.length; i++) {
+      if (bucket[i].slug === slug && p !== priority) {
+        const [entry] = bucket.splice(i, 1);
+        entry.priority = priority;
+        buckets[priority].push(entry);
+        return;
+      }
+    }
+  }
 }
 
 /**
  * Cancel a pending or queued load for a slug.
  */
 export function cancelLoad(slug: string) {
-  queue = queue.filter((e) => {
-    if (e.slug === slug) {
-      e.abortController.abort();
-      return false;
-    }
-    return true;
-  });
+  removeSlug(slug);
 }
