@@ -25,67 +25,6 @@ const SLIDE_IN_COL_STAGGER = 0.08;
 const REZOOM_DURATION = 1.2;
 const MOSAIC_PADDING = 1.15;
 
-// ── Helpers ───────────────────────────────────────────────────────
-
-/** GSAP ease functions for manual lerp in batch updates */
-function power3InOut(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-interface BatchTarget {
-  mesh: Mesh;
-  program: Program;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  delay: number; // normalized 0..1 within the phase
-}
-
-/**
- * Add a single proxy tween that drives N mesh positions via batch lerp.
- * Replaces N individual `tl.to()` calls with 1 tween + 1 onUpdate loop.
- * Supports per-mesh stagger via the delay field.
- */
-function addBatchTween(
-  tl: gsap.core.Timeline,
-  label: string,
-  duration: number,
-  targets: BatchTarget[],
-  easeFn: (t: number) => number,
-  distortion = 0,
-) {
-  if (targets.length === 0) return;
-  const proxy = { t: 0 };
-  // Snapshot start positions
-  for (let i = 0; i < targets.length; i++) {
-    targets[i].startX = targets[i].mesh.position.x as number;
-    targets[i].startY = targets[i].mesh.position.y as number;
-  }
-  tl.fromTo(proxy, { t: 0 }, {
-    t: 1,
-    duration,
-    ease: 'none', // we apply easing manually to support per-item stagger
-    onUpdate: () => {
-      const raw = proxy.t;
-      for (let i = 0; i < targets.length; i++) {
-        const b = targets[i];
-        // Per-mesh staggered progress: clamp [0,1] after subtracting delay
-        const localT = Math.max(0, Math.min(1, (raw - b.delay) / (1 - b.delay)));
-        const eased = easeFn(localT);
-        b.mesh.position.x = lerp(b.startX, b.endX, eased);
-        b.mesh.position.y = lerp(b.startY, b.endY, eased);
-        if (distortion > 0) {
-          b.program.uniforms.u_distortionAmount.value = Math.sin(localT * Math.PI) * distortion;
-        }
-      }
-    },
-  }, label);
-}
-
 // ── Interfaces ────────────────────────────────────────────────────
 
 interface ColumnMesh {
@@ -395,36 +334,38 @@ export const useFilterDezoom = ({
     }, 'dezoom');
 
     if (comingFromFiltered) {
-      // Batch: current column + slide-in columns, all during dezoom
-      const dezoomBatch: BatchTarget[] = [];
-
-      // Current column → mosaic positions
+      // Current column glides to its mosaic position DURING the dezoom
       currentColMeshes.forEach((cm) => {
         const mosaic = mosaicPositions.get(cm.projectIndex)!;
-        dezoomBatch.push({ mesh: cm.mesh, program: cm.program, startX: 0, startY: 0, endX: mosaic.x, endY: mosaic.y, delay: 0 });
+        tl.to(cm.mesh.position, {
+          x: mosaic.x,
+          y: mosaic.y,
+          duration: DEZOOM_DURATION,
+          ease: 'power3.inOut',
+        }, 'dezoom');
       });
 
-      // Other columns slide in with stagger
+      // Other columns slide in simultaneously during the dezoom
       const otherColIndicesIn = Array.from({ length: numCats }, (_, i) => i)
         .filter((c) => c !== currentColIdx)
         .sort((a, b) => Math.abs(a - currentColIdx) - Math.abs(b - currentColIdx));
-      const maxSlideInDelay = (otherColIndicesIn.length - 1) * SLIDE_IN_COL_STAGGER;
-      const normalizer = maxSlideInDelay > 0 ? DEZOOM_DURATION : 1;
 
       otherColIndicesIn.forEach((colIdx, orderIdx) => {
         const colMeshes = slideInMeshes.filter(
           (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
         );
+        if (colMeshes.length === 0) return;
         const colDelay = orderIdx * SLIDE_IN_COL_STAGGER;
-        const normDelay = colDelay / normalizer;
+
         colMeshes.forEach((cm) => {
           const mosaic = mosaicPositions.get(cm.projectIndex)!;
-          // X stays at mosaic.x (already positioned), only Y slides in
-          dezoomBatch.push({ mesh: cm.mesh, program: cm.program, startX: 0, startY: 0, endX: mosaic.x, endY: mosaic.y, delay: Math.min(normDelay, 0.5) });
+          tl.to(cm.mesh.position, {
+            y: mosaic.y,
+            duration: DEZOOM_DURATION,
+            ease: 'power3.inOut',
+          }, `dezoom+=${colDelay}`);
         });
       });
-
-      addBatchTween(tl, 'dezoom', DEZOOM_DURATION, dezoomBatch, power3InOut);
     }
 
     t += DEZOOM_DURATION + 0.2;
@@ -438,24 +379,39 @@ export const useFilterDezoom = ({
       // Already formed during dezoom — skip
       // (t already advanced past dezoom)
     } else {
-      // From unfiltered: glide center column to mosaic (1 proxy, N lerps)
+      // From unfiltered: glide center column to mosaic
       const meshesWithTarget = allMeshes.map((cm) => ({
         cm,
         target: mosaicPositions.get(cm.projectIndex)!,
       }));
       meshesWithTarget.sort((a, b) => Math.abs(a.target.x) - Math.abs(b.target.x));
-      const totalStagger = (meshesWithTarget.length - 1) * GLIDE_STAGGER;
-      const batchDuration = GLIDE_DURATION + totalStagger;
+      const glideStaggerTotal = (meshesWithTarget.length - 1) * GLIDE_STAGGER;
 
-      const glideBatch: BatchTarget[] = meshesWithTarget.map(({ cm, target }, idx) => ({
-        mesh: cm.mesh, program: cm.program,
-        startX: 0, startY: 0,
-        endX: target.x, endY: target.y,
-        delay: (idx * GLIDE_STAGGER) / batchDuration,
-      }));
+      const glideProxy = { t: 0 };
+      const allCms = meshesWithTarget.map(({ cm }) => cm);
 
-      addBatchTween(tl, 'form', batchDuration, glideBatch, power3InOut, 0.8);
-      t += batchDuration + 0.2;
+      meshesWithTarget.forEach(({ cm, target }, idx) => {
+        tl.to(cm.mesh.position, {
+          x: target.x,
+          y: target.y,
+          duration: GLIDE_DURATION,
+          ease: 'power3.inOut',
+        }, `form+=${idx * GLIDE_STAGGER}`);
+      });
+
+      tl.fromTo(glideProxy, { t: 0 }, {
+        t: 1,
+        duration: GLIDE_DURATION,
+        ease: 'none',
+        onUpdate: () => {
+          const arc = Math.sin(glideProxy.t * Math.PI) * 0.8;
+          for (let i = 0; i < allCms.length; i++) {
+            allCms[i].program.uniforms.u_distortionAmount.value = arc;
+          }
+        },
+      }, 'form');
+
+      t += GLIDE_DURATION + glideStaggerTotal + 0.2;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -466,20 +422,37 @@ export const useFilterDezoom = ({
     tl.addLabel('exit', t);
 
     if (goingToAll) {
-      // ── To All: converge all columns back to center column (1 proxy) ──
-      const convergeBatch: BatchTarget[] = allMeshes.map((cm) => {
-        let d = cm.projectIndex;
+      // ── To All: converge all columns back to center column ──
+      const convergeProxy = { t: 0 };
+      const allCms = allMeshes;
+
+      allMeshes.forEach((cm) => {
+        // Center column Y: circular, centered on project 0
+        let d = cm.projectIndex - 0; // centered on index 0
         if (d > N / 2) d -= N;
         if (d < -N / 2) d += N;
-        return {
-          mesh: cm.mesh, program: cm.program,
-          startX: 0, startY: 0,
-          endX: centerX, endY: -d * slideH,
-          delay: 0,
-        };
+        const centerY = -d * slideH;
+
+        tl.to(cm.mesh.position, {
+          x: centerX,
+          y: centerY,
+          duration: GLIDE_DURATION,
+          ease: 'power3.inOut',
+        }, 'exit');
       });
 
-      addBatchTween(tl, 'exit', GLIDE_DURATION, convergeBatch, power3InOut, 0.8);
+      tl.fromTo(convergeProxy, { t: 0 }, {
+        t: 1,
+        duration: GLIDE_DURATION,
+        ease: 'none',
+        onUpdate: () => {
+          const arc = Math.sin(convergeProxy.t * Math.PI) * 0.8;
+          for (let i = 0; i < allCms.length; i++) {
+            allCms[i].program.uniforms.u_distortionAmount.value = arc;
+          }
+        },
+      }, 'exit');
+
       t += GLIDE_DURATION + 0.1;
 
       // Rezoom
@@ -534,51 +507,43 @@ export const useFilterDezoom = ({
       }, [], t);
 
     } else {
-      // ── To specific filter: slide-out + rezoom simultaneously (1 batch) ──
+      // ── To specific filter: slide-out + rezoom simultaneously ──
       const otherColIndicesOut = Array.from({ length: numCats }, (_, i) => i)
         .filter((c) => c !== selectedColIdx)
         .sort((a, b) => Math.abs(a - selectedColIdx) - Math.abs(b - selectedColIdx));
-      const maxExitDelay = (otherColIndicesOut.length - 1) * SLIDE_OUT_COL_STAGGER;
 
-      const exitBatch: BatchTarget[] = [];
-
-      // Slide-out non-selected columns (relative Y offset)
+      // Slide out non-selected columns
       otherColIndicesOut.forEach((colIdx, orderIdx) => {
         const colMeshes = otherMeshesForExit.filter(
           (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
         );
+        if (colMeshes.length === 0) return;
         const dir = colIdx < selectedColIdx ? -1 : 1;
         const slideOutY = dir * (vpDezoomH + maxColHeight);
-        const normDelay = maxExitDelay > 0 ? (orderIdx * SLIDE_OUT_COL_STAGGER) / REZOOM_DURATION : 0;
+        const colDelay = orderIdx * SLIDE_OUT_COL_STAGGER;
         colMeshes.forEach((cm) => {
-          const curY = mosaicPositions.get(cm.projectIndex)!.y;
-          exitBatch.push({
-            mesh: cm.mesh, program: cm.program,
-            startX: 0, startY: 0,
-            endX: cm.mesh.position.x as number, endY: curY + slideOutY,
-            delay: Math.min(normDelay, 0.5),
-          });
+          tl.to(cm.mesh.position, {
+            y: `+=${slideOutY}`,
+            duration: REZOOM_DURATION,
+            ease: 'power3.inOut',
+          }, `exit+=${colDelay}`);
         });
       });
 
-      // Selected column shifts to centerX (delay=0)
-      selectedMeshes.forEach((cm) => {
-        exitBatch.push({
-          mesh: cm.mesh, program: cm.program,
-          startX: 0, startY: 0,
-          endX: centerX, endY: cm.mesh.position.y as number, // Y stays
-          delay: 0,
-        });
-      });
-
-      addBatchTween(tl, 'exit', REZOOM_DURATION, exitBatch, power3InOut);
-
-      // Rezoom camera (still needs its own tween — it's 1 tween, not N)
+      // Rezoom + shift selected column — same timing as slide-out
       tl.to(camera.position, {
         z: 5,
         duration: REZOOM_DURATION,
         ease: 'power3.inOut',
       }, 'exit');
+
+      selectedMeshes.forEach((cm) => {
+        tl.to(cm.mesh.position, {
+          x: centerX,
+          duration: REZOOM_DURATION,
+          ease: 'power3.inOut',
+        }, 'exit');
+      });
 
       t += REZOOM_DURATION + 0.05;
 
