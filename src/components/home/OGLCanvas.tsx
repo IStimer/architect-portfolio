@@ -18,6 +18,7 @@ interface OGLCanvasProps {
   allProjects: ProjectData[];
   categories: SanityCategory[];
   pendingCategory: string | null;
+  activeCategory: string | null;
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
@@ -35,6 +36,7 @@ const OGLCanvas = ({
   allProjects,
   categories,
   pendingCategory,
+  activeCategory,
   onIndexChange,
   onHover,
   onNavigate,
@@ -86,6 +88,7 @@ const OGLCanvas = ({
     allProjects,
     categories,
     pendingCategory,
+    activeCategory,
     textures,
     texturesLoaded,
     currentIndex,

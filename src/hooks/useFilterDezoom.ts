@@ -20,8 +20,8 @@ const WINDOW_SIZE = 9;
 const DEZOOM_DURATION = 1.2;
 const GLIDE_DURATION = 1.0;
 const GLIDE_STAGGER = 0.03;
-const SLIDE_OUT_DURATION = 0.8;
 const SLIDE_OUT_COL_STAGGER = 0.08;
+const SLIDE_IN_COL_STAGGER = 0.08;
 const REZOOM_DURATION = 1.2;
 const MOSAIC_PADDING = 1.15;
 
@@ -48,6 +48,7 @@ interface FilterDezoomProps {
   allProjects: ProjectData[];
   categories: SanityCategory[];
   pendingCategory: string | null;
+  activeCategory: string | null;
   textures: Map<string, TextureEntry>;
   texturesLoaded: boolean;
   currentIndex: number;
@@ -64,6 +65,7 @@ export const useFilterDezoom = ({
   allProjects,
   categories,
   pendingCategory,
+  activeCategory,
   textures,
   texturesLoaded,
   currentIndex,
@@ -86,6 +88,8 @@ export const useFilterDezoom = ({
   onCompleteRef.current = onComplete;
   const pendingCategoryRef = useRef(pendingCategory);
   pendingCategoryRef.current = pendingCategory;
+  const activeCategoryRef = useRef(activeCategory);
+  activeCategoryRef.current = activeCategory;
   const texturesRef = useRef(textures);
   texturesRef.current = textures;
 
@@ -97,7 +101,10 @@ export const useFilterDezoom = ({
     const { gl, scene, camera } = ctx;
     const N = allProjects.length;
     const numCats = categories.length;
-    const selectedCatSlug = pendingCategoryRef.current;
+    const selectedCatSlug = pendingCategoryRef.current;   // target
+    const currentCatSlug = activeCategoryRef.current;     // source
+    const comingFromFiltered = currentCatSlug !== null;
+    const goingToAll = selectedCatSlug === null;
 
     handoffRef.current = null;
 
@@ -127,16 +134,17 @@ export const useFilterDezoom = ({
     const centerIdx = Math.round(virtualCenter);
     const fractional = virtualCenter - centerIdx;
 
-    // ── Slider meshes by projectIndex ──
-    const sliderByProjectIdx = new Map<number, typeof sliderSlides[0]>();
-    sliderSlides.forEach((s) => sliderByProjectIdx.set(s.projectIndex, s));
+    // ── Slider meshes by SLUG (works for both filtered and unfiltered) ──
+    const sliderBySlug = new Map<string, typeof sliderSlides[0]>();
+    sliderSlides.forEach((s) => sliderBySlug.set(s.slug, s));
 
     // ── Group projects by category ──
     const catSlugs = categories.map((c) => c.slug);
     const catIndexMap = new Map<string, number>();
     catSlugs.forEach((slug, i) => catIndexMap.set(slug, i));
 
-    const selectedColIdx = selectedCatSlug ? catIndexMap.get(selectedCatSlug) ?? 0 : 0;
+    const selectedColIdx = selectedCatSlug ? catIndexMap.get(selectedCatSlug) ?? 0 : -1;
+    const currentColIdx = currentCatSlug ? catIndexMap.get(currentCatSlug) ?? -1 : -1;
 
     const projectsByCol: number[][] = Array.from({ length: numCats }, () => []);
     const categorizedIndices = new Set<number>();
@@ -149,7 +157,7 @@ export const useFilterDezoom = ({
       }
     }
 
-    // ── Phase 2 target positions (mosaic) ──
+    // ── Mosaic layout ──
     const colGap = meshW * 0.3;
     const totalColsWidth = numCats * meshW + (numCats - 1) * colGap;
     const colStartX = -totalColsWidth / 2 + meshW / 2;
@@ -158,7 +166,7 @@ export const useFilterDezoom = ({
       colXs.push(colStartX + c * (meshW + colGap));
     }
 
-    const targetPositions = new Map<number, { x: number; y: number; col: number }>();
+    const mosaicPositions = new Map<number, { x: number; y: number; col: number }>();
     let maxColHeight = 0;
     for (let c = 0; c < numCats; c++) {
       const colProjects = projectsByCol[c];
@@ -168,7 +176,7 @@ export const useFilterDezoom = ({
       for (let r = 0; r < colCount; r++) {
         let d = r;
         if (d > colCount / 2) d -= colCount;
-        targetPositions.set(colProjects[r], {
+        mosaicPositions.set(colProjects[r], {
           x: colXs[c],
           y: -d * slideH,
           col: c,
@@ -181,8 +189,14 @@ export const useFilterDezoom = ({
     const neededZForWidth = (totalColsWidth * MOSAIC_PADDING) / (2 * halfTan * aspect);
     const neededZForHeight = (maxColHeight * MOSAIC_PADDING) / (2 * halfTan);
     const dezoomCameraZ = Math.max(neededZForWidth, neededZForHeight, 15);
+    const vpDezoomH = 2 * halfTan * dezoomCameraZ;
 
     // ── Create meshes ──
+    // When coming from filtered: slider meshes matched by slug start at centerX.
+    // When coming from unfiltered: slider meshes matched by slug start at centerX.
+    // Non-slider meshes start at:
+    //   - From unfiltered: centerX (center column, same as slider X)
+    //   - From filtered: their mosaic X but Y off-screen (will slide in)
     const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
     const fallbackTex = getPlaceholderTexture(gl);
     const allMeshes: ColumnMesh[] = [];
@@ -190,15 +204,11 @@ export const useFilterDezoom = ({
     for (let i = 0; i < N; i++) {
       if (!categorizedIndices.has(i)) continue;
       const slug = allProjects[i].slug;
+      const mosaic = mosaicPositions.get(i)!;
 
-      let d = i - centerIdx;
-      if (d > N / 2) d -= N;
-      if (d < -N / 2) d += N;
-      const phase1Y = -(d - fractional) * slideH;
-
-      const existing = sliderByProjectIdx.get(i);
+      const existing = sliderBySlug.get(slug);
       if (existing) {
-        sliderByProjectIdx.delete(i);
+        sliderBySlug.delete(slug);
         const currentY = existing.mesh.position.y as number;
         existing.mesh.setParent(scene);
         existing.mesh.position.x = centerX;
@@ -208,13 +218,11 @@ export const useFilterDezoom = ({
         existing.program.uniforms.u_distortionAmount.value = 0;
         existing.program.uniforms.uAlpha.value = 1;
         existing.program.uniforms.uTextureReady.value = 1.0;
-        // Force GPU upload — slider may have had stale needsUpdate
         const entry = textures.get(slug);
         if (entry) entry.texture.needsUpdate = true;
         allMeshes.push({ mesh: existing.mesh, program: existing.program, slug, projectIndex: i, width: meshW, height: meshH });
       } else {
         const entry = textures.get(slug);
-        // Force GPU upload — the LQIP may have been decoded but never rendered
         if (entry) entry.texture.needsUpdate = true;
         const program = new Program(gl, {
           vertex: vertexShader,
@@ -236,32 +244,47 @@ export const useFilterDezoom = ({
         });
         const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
         mesh.scale.set(meshW, meshH, 1);
-        mesh.position.set(centerX, phase1Y, 0);
+
+        if (comingFromFiltered) {
+          // Position at mosaic X but off-screen Y (will slide in during Phase C)
+          const dir = mosaic.col < currentColIdx ? -1 : mosaic.col > currentColIdx ? 1 : 0;
+          const offscreenY = mosaic.y + dir * (vpDezoomH + maxColHeight);
+          mesh.position.set(mosaic.x, offscreenY, 0);
+        } else {
+          // Center column: all at centerX with slider-like Y
+          let d = i - centerIdx;
+          if (d > N / 2) d -= N;
+          if (d < -N / 2) d += N;
+          mesh.position.set(centerX, -(d - fractional) * slideH, 0);
+        }
+
         mesh.setParent(scene);
         allMeshes.push({ mesh, program, slug, projectIndex: i, width: meshW, height: meshH });
       }
-      // Don't call requestFull here — full-res 1200px is overkill for tiny mosaic tiles.
-      // markVisible (below) triggers thumbnail loading which is sufficient.
     }
 
-    sliderByProjectIdx.forEach((s) => s.mesh.setParent(null));
+    sliderBySlug.forEach((s) => s.mesh.setParent(null));
     meshesRef.current = allMeshes;
     activeRef.current = true;
     let isComplete = false;
 
     markVisibleRef.current?.(new Set(allMeshes.map((m) => m.slug)));
 
-    // Partition: selected column vs others
-    const selectedMeshes = allMeshes.filter(
-      (cm) => targetPositions.get(cm.projectIndex)?.col === selectedColIdx
+    // ── Partition meshes ──
+    const meshByCol = (col: number) => allMeshes.filter(
+      (cm) => mosaicPositions.get(cm.projectIndex)?.col === col
     );
-    const otherMeshes = allMeshes.filter(
-      (cm) => targetPositions.get(cm.projectIndex)?.col !== selectedColIdx
-    );
+    const selectedMeshes = selectedColIdx >= 0 ? meshByCol(selectedColIdx) : [];
+    const otherMeshesForExit = selectedColIdx >= 0
+      ? allMeshes.filter((cm) => mosaicPositions.get(cm.projectIndex)?.col !== selectedColIdx)
+      : [];
+    // For entrance: meshes NOT in current filter (need to slide in)
+    const currentColMeshes = currentColIdx >= 0 ? meshByCol(currentColIdx) : [];
+    const slideInMeshes = comingFromFiltered
+      ? allMeshes.filter((cm) => mosaicPositions.get(cm.projectIndex)?.col !== currentColIdx)
+      : [];
 
     // ── Texture sync tick ──
-    // Detects when the texture manager upgrades a texture (resolution change)
-    // and forces a GPU re-upload. Self-removes when all textures are synced.
     const syncedWidths = new Map<string, number>();
     let pendingSyncs = allMeshes.length;
     allMeshes.forEach((cm) => {
@@ -282,188 +305,291 @@ export const useFilterDezoom = ({
         const prev = syncedWidths.get(cm.slug) ?? 0;
         const entry = curTextures.get(cm.slug);
         if (!entry || entry.width === prev) return;
-
         syncedWidths.set(cm.slug, entry.width);
         entry.texture.needsUpdate = true;
         cm.program.uniforms.uResolution.value = [entry.width, entry.height];
-
-        if (prev === 0) pendingSyncs--; // first real texture for this slug
-
-        // Snap uTextureReady to 1 — texture is real now
+        if (prev === 0) pendingSyncs--;
         cm.program.uniforms.uTextureReady.value = 1.0;
       });
     };
-    // Only add the tick if there are textures to sync
     if (pendingSyncs > 0) gsap.ticker.add(textureTick);
 
     // ── Timeline ──
     const tl = gsap.timeline();
+    let t = 0; // running time cursor
 
     // ═══════════════════════════════════════════════════════════════
-    // PHASE 1 — Dezoom Z=5 → Z=dezoomCameraZ
+    // PHASE A — Dezoom Z=5 → Z=dezoomCameraZ
+    //   From filtered: simultaneously shift current column to its mosaic X
     // ═══════════════════════════════════════════════════════════════
-    tl.addLabel('dezoom', 0);
+    tl.addLabel('dezoom', t);
     tl.to(camera.position, {
       z: dezoomCameraZ,
       duration: DEZOOM_DURATION,
       ease: 'power3.inOut',
     }, 'dezoom');
 
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 2 — Glide to category columns
-    // ═══════════════════════════════════════════════════════════════
-    const glideStart = DEZOOM_DURATION + 0.1;
-    tl.addLabel('glide', glideStart);
-
-    const meshesWithTarget = allMeshes.map((cm) => ({
-      cm,
-      target: targetPositions.get(cm.projectIndex)!,
-    }));
-    meshesWithTarget.sort((a, b) => Math.abs(a.target.x) - Math.abs(b.target.x));
-    const glideStaggerTotal = (meshesWithTarget.length - 1) * GLIDE_STAGGER;
-
-    // Single distortion proxy for all meshes (one onUpdate instead of N)
-    const glideProxy = { t: 0 };
-    const glideDistortionMeshes = meshesWithTarget.map(({ cm }) => cm);
-
-    meshesWithTarget.forEach(({ cm, target }, idx) => {
-      tl.to(cm.mesh.position, {
-        x: target.x,
-        y: target.y,
-        duration: GLIDE_DURATION,
-        ease: 'power3.inOut',
-      }, `glide+=${idx * GLIDE_STAGGER}`);
-    });
-
-    tl.fromTo(glideProxy, { t: 0 }, {
-      t: 1,
-      duration: GLIDE_DURATION,
-      ease: 'none',
-      onUpdate: () => {
-        const arc = Math.sin(glideProxy.t * Math.PI) * 0.8;
-        for (let i = 0; i < glideDistortionMeshes.length; i++) {
-          glideDistortionMeshes[i].program.uniforms.u_distortionAmount.value = arc;
-        }
-      },
-    }, 'glide');
-
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 3 — Rezoom into selected column
-    // ═══════════════════════════════════════════════════════════════
-    const phase3Start = glideStart + GLIDE_DURATION + glideStaggerTotal + 0.2;
-    tl.addLabel('phase3', phase3Start);
-
-    const vpDezoomH = 2 * halfTan * dezoomCameraZ;
-
-    // 3A — Slide non-selected columns off-screen
-    const otherColIndices = Array.from({ length: numCats }, (_, i) => i)
-      .filter((c) => c !== selectedColIdx)
-      .sort((a, b) => Math.abs(a - selectedColIdx) - Math.abs(b - selectedColIdx));
-
-    otherColIndices.forEach((colIdx, orderIdx) => {
-      const colMeshes = otherMeshes.filter(
-        (cm) => targetPositions.get(cm.projectIndex)?.col === colIdx
-      );
-      if (colMeshes.length === 0) return;
-
-      const dir = colIdx < selectedColIdx ? -1 : 1;
-      const slideOutY = dir * (vpDezoomH + maxColHeight);
-      const colDelay = orderIdx * SLIDE_OUT_COL_STAGGER;
-
-      colMeshes.forEach((cm) => {
+    if (comingFromFiltered) {
+      // Current column glides to its mosaic position DURING the dezoom
+      currentColMeshes.forEach((cm) => {
+        const mosaic = mosaicPositions.get(cm.projectIndex)!;
         tl.to(cm.mesh.position, {
-          y: `+=${slideOutY}`,
-          duration: SLIDE_OUT_DURATION,
-          ease: 'power3.in',
-        }, `phase3+=${colDelay}`);
+          x: mosaic.x,
+          y: mosaic.y,
+          duration: DEZOOM_DURATION,
+          ease: 'power3.inOut',
+        }, 'dezoom');
       });
-    });
 
-    const slideOutTotal = SLIDE_OUT_DURATION + (otherColIndices.length - 1) * SLIDE_OUT_COL_STAGGER;
+      // Other columns slide in simultaneously during the dezoom
+      const otherColIndicesIn = Array.from({ length: numCats }, (_, i) => i)
+        .filter((c) => c !== currentColIdx)
+        .sort((a, b) => Math.abs(a - currentColIdx) - Math.abs(b - currentColIdx));
 
-    // 3B — Rezoom after slide-out
-    const phase3bStart = phase3Start + slideOutTotal + 0.1;
-    tl.addLabel('phase3b', phase3bStart);
+      otherColIndicesIn.forEach((colIdx, orderIdx) => {
+        const colMeshes = slideInMeshes.filter(
+          (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
+        );
+        if (colMeshes.length === 0) return;
+        const colDelay = orderIdx * SLIDE_IN_COL_STAGGER;
 
-    tl.to(camera.position, {
-      z: 5,
-      duration: REZOOM_DURATION,
-      ease: 'power3.inOut',
-    }, 'phase3b');
+        colMeshes.forEach((cm) => {
+          const mosaic = mosaicPositions.get(cm.projectIndex)!;
+          tl.to(cm.mesh.position, {
+            y: mosaic.y,
+            duration: DEZOOM_DURATION,
+            ease: 'power3.inOut',
+          }, `dezoom+=${colDelay}`);
+        });
+      });
+    }
 
-    const selectedColProjects = projectsByCol[selectedColIdx];
-    const selectedCount = selectedColProjects.length;
+    t += DEZOOM_DURATION + 0.2;
 
-    selectedMeshes.forEach((cm) => {
-      tl.to(cm.mesh.position, {
-        x: centerX,
+    // ═══════════════════════════════════════════════════════════════
+    // PHASE B — Form mosaic (only for unfiltered → filter)
+    // ═══════════════════════════════════════════════════════════════
+    tl.addLabel('form', t);
+
+    if (comingFromFiltered) {
+      // Already formed during dezoom — skip
+      // (t already advanced past dezoom)
+    } else {
+      // From unfiltered: glide center column to mosaic
+      const meshesWithTarget = allMeshes.map((cm) => ({
+        cm,
+        target: mosaicPositions.get(cm.projectIndex)!,
+      }));
+      meshesWithTarget.sort((a, b) => Math.abs(a.target.x) - Math.abs(b.target.x));
+      const glideStaggerTotal = (meshesWithTarget.length - 1) * GLIDE_STAGGER;
+
+      const glideProxy = { t: 0 };
+      const allCms = meshesWithTarget.map(({ cm }) => cm);
+
+      meshesWithTarget.forEach(({ cm, target }, idx) => {
+        tl.to(cm.mesh.position, {
+          x: target.x,
+          y: target.y,
+          duration: GLIDE_DURATION,
+          ease: 'power3.inOut',
+        }, `form+=${idx * GLIDE_STAGGER}`);
+      });
+
+      tl.fromTo(glideProxy, { t: 0 }, {
+        t: 1,
+        duration: GLIDE_DURATION,
+        ease: 'none',
+        onUpdate: () => {
+          const arc = Math.sin(glideProxy.t * Math.PI) * 0.8;
+          for (let i = 0; i < allCms.length; i++) {
+            allCms[i].program.uniforms.u_distortionAmount.value = arc;
+          }
+        },
+      }, 'form');
+
+      t += GLIDE_DURATION + glideStaggerTotal + 0.2;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PHASE C — Exit mosaic
+    //   To filter: slide-out non-selected + rezoom into selected
+    //   To All: converge all columns to center + rezoom
+    // ═══════════════════════════════════════════════════════════════
+    tl.addLabel('exit', t);
+
+    if (goingToAll) {
+      // ── To All: converge all columns back to center column ──
+      const convergeProxy = { t: 0 };
+      const allCms = allMeshes;
+
+      allMeshes.forEach((cm) => {
+        // Center column Y: circular, centered on project 0
+        let d = cm.projectIndex - 0; // centered on index 0
+        if (d > N / 2) d -= N;
+        if (d < -N / 2) d += N;
+        const centerY = -d * slideH;
+
+        tl.to(cm.mesh.position, {
+          x: centerX,
+          y: centerY,
+          duration: GLIDE_DURATION,
+          ease: 'power3.inOut',
+        }, 'exit');
+      });
+
+      tl.fromTo(convergeProxy, { t: 0 }, {
+        t: 1,
+        duration: GLIDE_DURATION,
+        ease: 'none',
+        onUpdate: () => {
+          const arc = Math.sin(convergeProxy.t * Math.PI) * 0.8;
+          for (let i = 0; i < allCms.length; i++) {
+            allCms[i].program.uniforms.u_distortionAmount.value = arc;
+          }
+        },
+      }, 'exit');
+
+      t += GLIDE_DURATION + 0.1;
+
+      // Rezoom
+      tl.addLabel('rezoom', t);
+      tl.to(camera.position, {
+        z: 5,
         duration: REZOOM_DURATION,
         ease: 'power3.inOut',
-      }, 'phase3b');
-    });
+      }, 'rezoom');
+      t += REZOOM_DURATION + 0.05;
 
-    // ── On Complete ──
-    tl.call(() => {
-      isComplete = true;
-      camera.position.z = 5;
+      // On complete — handoff ALL projects to slider
+      tl.call(() => {
+        isComplete = true;
+        camera.position.z = 5;
+        gsap.ticker.remove(textureTick);
 
-      // Stop texture tick immediately (don't wait for React cleanup)
-      gsap.ticker.remove(textureTick);
+        const handoffCount = Math.min(N, WINDOW_SIZE);
+        const half = Math.floor(handoffCount / 2);
+        const handoff: SlideData[] = [];
+        const meshByAllIdx = new Map<number, ColumnMesh>();
+        allMeshes.forEach((cm) => meshByAllIdx.set(cm.projectIndex, cm));
+        const usedMeshes = new Set<ColumnMesh>();
 
-      // Remove off-screen meshes
-      otherMeshes.forEach((cm) => cm.mesh.setParent(null));
+        for (let slot = 0; slot < handoffCount; slot++) {
+          const offset = slot - half;
+          const projIdx = ((offset % N) + N) % N;
+          const cm = meshByAllIdx.get(projIdx);
+          if (!cm) continue;
+          usedMeshes.add(cm);
+          const slotY = -offset * slideH;
+          cm.mesh.position.x = centerX;
+          cm.mesh.position.y = slotY;
+          cm.mesh.position.z = 0;
+          cm.mesh.rotation.z = 0;
+          cm.mesh.scale.set(meshW, meshH, 1);
+          cm.program.uniforms.uAlpha.value = 1;
+          cm.program.uniforms.u_distortionAmount.value = 0;
+          cm.program.uniforms.uWind.value = 0;
+          cm.program.uniforms.uWindDir.value = [0, 0];
+          cm.program.uniforms.uMeshSize.value = [meshW, meshH];
+          handoff.push({
+            mesh: cm.mesh, program: cm.program, slug: cm.slug,
+            baseY: slotY, width: meshW, height: meshH, xOffset: 0, projectIndex: projIdx,
+          });
+        }
+        allMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) cm.mesh.setParent(null); });
+        handoffRef.current = handoff;
+        meshesRef.current = [];
+        window.dispatchEvent(new Event('resize'));
+        requestAnimationFrame(() => { onCompleteRef.current(); });
+      }, [], t);
 
-      // Build handoff in slider slot order
-      const handoffCount = Math.min(selectedCount, WINDOW_SIZE);
-      const half = Math.floor(handoffCount / 2);
-      const handoff: SlideData[] = [];
+    } else {
+      // ── To specific filter: slide-out + rezoom simultaneously ──
+      const otherColIndicesOut = Array.from({ length: numCats }, (_, i) => i)
+        .filter((c) => c !== selectedColIdx)
+        .sort((a, b) => Math.abs(a - selectedColIdx) - Math.abs(b - selectedColIdx));
 
-      const meshByFilteredIdx = new Map<number, ColumnMesh>();
-      selectedMeshes.forEach((cm, idx) => meshByFilteredIdx.set(idx, cm));
-      const usedMeshes = new Set<ColumnMesh>();
-
-      for (let slot = 0; slot < handoffCount; slot++) {
-        const offset = slot - half;
-        const filteredIdx = ((offset % selectedCount) + selectedCount) % selectedCount;
-        const cm = meshByFilteredIdx.get(filteredIdx);
-        if (!cm) continue;
-
-        usedMeshes.add(cm);
-        const slotY = -offset * slideH;
-
-        cm.mesh.position.x = centerX;
-        cm.mesh.position.y = slotY;
-        cm.mesh.position.z = 0;
-        cm.mesh.rotation.z = 0;
-        cm.mesh.scale.set(meshW, meshH, 1);
-        cm.program.uniforms.uAlpha.value = 1;
-        cm.program.uniforms.u_distortionAmount.value = 0;
-        cm.program.uniforms.uWind.value = 0;
-        cm.program.uniforms.uWindDir.value = [0, 0];
-        cm.program.uniforms.uMeshSize.value = [meshW, meshH];
-
-        handoff.push({
-          mesh: cm.mesh,
-          program: cm.program,
-          slug: cm.slug,
-          baseY: slotY,
-          width: meshW,
-          height: meshH,
-          xOffset: 0,
-          projectIndex: filteredIdx,
+      // Slide out non-selected columns
+      otherColIndicesOut.forEach((colIdx, orderIdx) => {
+        const colMeshes = otherMeshesForExit.filter(
+          (cm) => mosaicPositions.get(cm.projectIndex)?.col === colIdx
+        );
+        if (colMeshes.length === 0) return;
+        const dir = colIdx < selectedColIdx ? -1 : 1;
+        const slideOutY = dir * (vpDezoomH + maxColHeight);
+        const colDelay = orderIdx * SLIDE_OUT_COL_STAGGER;
+        colMeshes.forEach((cm) => {
+          tl.to(cm.mesh.position, {
+            y: `+=${slideOutY}`,
+            duration: REZOOM_DURATION,
+            ease: 'power3.inOut',
+          }, `exit+=${colDelay}`);
         });
-      }
-
-      selectedMeshes.forEach((cm) => {
-        if (!usedMeshes.has(cm)) cm.mesh.setParent(null);
       });
 
-      handoffRef.current = handoff;
-      meshesRef.current = [];
+      // Rezoom + shift selected column — same timing as slide-out
+      tl.to(camera.position, {
+        z: 5,
+        duration: REZOOM_DURATION,
+        ease: 'power3.inOut',
+      }, 'exit');
 
-      window.dispatchEvent(new Event('resize'));
-      requestAnimationFrame(() => { onCompleteRef.current(); });
-    }, [], `phase3b+=${REZOOM_DURATION + 0.05}`);
+      selectedMeshes.forEach((cm) => {
+        tl.to(cm.mesh.position, {
+          x: centerX,
+          duration: REZOOM_DURATION,
+          ease: 'power3.inOut',
+        }, 'exit');
+      });
+
+      t += REZOOM_DURATION + 0.05;
+
+      // On complete — handoff selected column to slider
+      const selectedColProjects = projectsByCol[selectedColIdx];
+      const selectedCount = selectedColProjects.length;
+
+      tl.call(() => {
+        isComplete = true;
+        camera.position.z = 5;
+        gsap.ticker.remove(textureTick);
+
+        otherMeshesForExit.forEach((cm) => cm.mesh.setParent(null));
+
+        const handoffCount = Math.min(selectedCount, WINDOW_SIZE);
+        const half = Math.floor(handoffCount / 2);
+        const handoff: SlideData[] = [];
+        const meshByFilteredIdx = new Map<number, ColumnMesh>();
+        selectedMeshes.forEach((cm, idx) => meshByFilteredIdx.set(idx, cm));
+        const usedMeshes = new Set<ColumnMesh>();
+
+        for (let slot = 0; slot < handoffCount; slot++) {
+          const offset = slot - half;
+          const filteredIdx = ((offset % selectedCount) + selectedCount) % selectedCount;
+          const cm = meshByFilteredIdx.get(filteredIdx);
+          if (!cm) continue;
+          usedMeshes.add(cm);
+          const slotY = -offset * slideH;
+          cm.mesh.position.x = centerX;
+          cm.mesh.position.y = slotY;
+          cm.mesh.position.z = 0;
+          cm.mesh.rotation.z = 0;
+          cm.mesh.scale.set(meshW, meshH, 1);
+          cm.program.uniforms.uAlpha.value = 1;
+          cm.program.uniforms.u_distortionAmount.value = 0;
+          cm.program.uniforms.uWind.value = 0;
+          cm.program.uniforms.uWindDir.value = [0, 0];
+          cm.program.uniforms.uMeshSize.value = [meshW, meshH];
+          handoff.push({
+            mesh: cm.mesh, program: cm.program, slug: cm.slug,
+            baseY: slotY, width: meshW, height: meshH, xOffset: 0, projectIndex: filteredIdx,
+          });
+        }
+        selectedMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) cm.mesh.setParent(null); });
+        handoffRef.current = handoff;
+        meshesRef.current = [];
+        window.dispatchEvent(new Event('resize'));
+        requestAnimationFrame(() => { onCompleteRef.current(); });
+      }, [], t);
+    }
 
     // ── Cleanup ──
     cleanupRef.current = () => {

@@ -103,15 +103,12 @@ const Home = () => {
   }, []);
 
   const handleCategoryFilter = useCallback((slug: string | null) => {
-    if (viewMode === 'slider' && slug !== null) {
+    if (viewMode === 'slider' && (slug !== activeCategory)) {
+      // Trigger animated transition: unfiltered→filter, filter→filter, or filter→All
       setPendingCategory(slug);
       setViewMode('filter-dezoom');
-    } else {
-      // "All" filter or non-slider mode: apply directly
-      setActiveCategory(slug);
-      setCurrentIndex(0);
     }
-  }, [viewMode]);
+  }, [viewMode, activeCategory]);
 
   const handleFilterDezoomComplete = useCallback(() => {
     setActiveCategory(pendingCategory);
@@ -148,6 +145,7 @@ const Home = () => {
           allProjects={projects}
           categories={categories}
           pendingCategory={pendingCategory}
+          activeCategory={activeCategory}
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
