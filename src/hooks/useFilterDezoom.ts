@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Mesh, Program, Plane } from 'ogl';
+import { Mesh, Program } from 'ogl';
 import { gsap } from 'gsap';
 import type { OGLContext } from './useOGLRenderer';
 import type { ProjectData } from '../types';
@@ -7,6 +7,8 @@ import type { SanityCategory } from '../services/projectService';
 import type { SlideData, SliderModeHandle } from './useSliderMode';
 import type { TextureEntry } from './useTextureManager';
 import { getPlaceholderTexture } from './useTextureManager';
+import { initMeshPool, acquireMesh, releaseMesh } from '../services/meshPool';
+import type { PooledMesh } from '../services/meshPool';
 import vertexShader from '../shaders/slider/vertex.glsl';
 import fragmentShader from '../shaders/slider/fragment.glsl';
 
@@ -100,6 +102,7 @@ interface ColumnMesh {
   projectIndex: number;
   width: number;
   height: number;
+  pooled: boolean; // true if from mesh pool (should be released back)
 }
 
 export interface FilterDezoomHandle {
@@ -263,9 +266,10 @@ export const useFilterDezoom = ({
     // Non-slider meshes start at:
     //   - From unfiltered: centerX (center column, same as slider X)
     //   - From filtered: their mosaic X but Y off-screen (will slide in)
-    const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+    initMeshPool(gl, vertexShader, fragmentShader);
     const fallbackTex = getPlaceholderTexture(gl);
     const allMeshes: ColumnMesh[] = [];
+    const pooledItems: PooledMesh[] = []; // track for cleanup
 
     for (let i = 0; i < N; i++) {
       if (!categorizedIndices.has(i)) continue;
@@ -285,39 +289,28 @@ export const useFilterDezoom = ({
         existing.program.uniforms.uAlpha.value = 1;
         existing.program.uniforms.uTextureReady.value = 1.0;
         const entry = textures.get(slug);
-        if (entry) entry.texture.needsUpdate = true;
-        allMeshes.push({ mesh: existing.mesh, program: existing.program, slug, projectIndex: i, width: meshW, height: meshH });
+        if (entry && entry.width <= 20) entry.texture.needsUpdate = true;
+        allMeshes.push({ mesh: existing.mesh, program: existing.program, slug, projectIndex: i, width: meshW, height: meshH, pooled: false });
       } else {
         const entry = textures.get(slug);
         if (entry) entry.texture.needsUpdate = true;
-        const program = new Program(gl, {
-          vertex: vertexShader,
-          fragment: fragmentShader,
-          uniforms: {
-            uTexture: { value: entry?.texture ?? fallbackTex },
-            u_distortionAmount: { value: 0 },
-            u_parallax: { value: 0 },
-            uHover: { value: 0 },
-            uMouse: { value: [0.5, 0.5] },
-            uResolution: { value: entry ? [entry.width, entry.height] : [1, 1] },
-            uMeshSize: { value: [meshW, meshH] },
-            uAlpha: { value: 1 },
-            uTextureReady: { value: entry && entry.width > 4 ? 1.0 : 0.3 },
-            uWind: { value: 0 },
-            uWindDir: { value: [0, 0] },
-          },
-          transparent: true,
-        });
-        const mesh = new Mesh(gl, { geometry: sharedGeometry, program });
+
+        const pooled = acquireMesh(gl);
+        pooledItems.push(pooled);
+        const { mesh, program } = pooled;
+
+        program.uniforms.uTexture.value = entry?.texture ?? fallbackTex;
+        program.uniforms.uResolution.value = entry ? [entry.width, entry.height] : [1, 1];
+        program.uniforms.uMeshSize.value = [meshW, meshH];
+        program.uniforms.uTextureReady.value = entry && entry.width > 4 ? 1.0 : 0.3;
+
         mesh.scale.set(meshW, meshH, 1);
 
         if (comingFromFiltered) {
-          // Position at mosaic X but off-screen Y (will slide in during Phase C)
           const dir = mosaic.col < currentColIdx ? -1 : mosaic.col > currentColIdx ? 1 : 0;
           const offscreenY = mosaic.y + dir * (vpDezoomH + maxColHeight);
           mesh.position.set(mosaic.x, offscreenY, 0);
         } else {
-          // Center column: all at centerX with slider-like Y
           let d = i - centerIdx;
           if (d > N / 2) d -= N;
           if (d < -N / 2) d += N;
@@ -325,10 +318,11 @@ export const useFilterDezoom = ({
         }
 
         mesh.setParent(scene);
-        allMeshes.push({ mesh, program, slug, projectIndex: i, width: meshW, height: meshH });
+        allMeshes.push({ mesh, program, slug, projectIndex: i, width: meshW, height: meshH, pooled: true });
       }
     }
 
+    // Release leftover slider meshes (not reused)
     sliderBySlug.forEach((s) => s.mesh.setParent(null));
     meshesRef.current = allMeshes;
     activeRef.current = true;
@@ -458,6 +452,15 @@ export const useFilterDezoom = ({
       t += glideTotalDuration + 0.2;
     }
 
+    // Helper: release pooled meshes, detach non-pooled
+    function releaseCm(cm: ColumnMesh) {
+      if (cm.pooled) {
+        releaseMesh({ mesh: cm.mesh, program: cm.program });
+      } else {
+        cm.mesh.setParent(null);
+      }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // PHASE C — Exit mosaic
     //   To filter: slide-out non-selected + rezoom into selected
@@ -525,7 +528,7 @@ export const useFilterDezoom = ({
             baseY: slotY, width: meshW, height: meshH, xOffset: 0, projectIndex: projIdx,
           });
         }
-        allMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) cm.mesh.setParent(null); });
+        allMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) releaseCm(cm); });
         handoffRef.current = handoff;
         meshesRef.current = [];
         window.dispatchEvent(new Event('resize'));
@@ -623,7 +626,7 @@ export const useFilterDezoom = ({
         camera.position.z = 5;
         gsap.ticker.remove(textureTick);
 
-        otherMeshesForExit.forEach((cm) => cm.mesh.setParent(null));
+        otherMeshesForExit.forEach(releaseCm);
 
         const handoffCount = Math.min(selectedCount, WINDOW_SIZE);
         const half = Math.floor(handoffCount / 2);
@@ -654,7 +657,7 @@ export const useFilterDezoom = ({
             baseY: slotY, width: meshW, height: meshH, xOffset: 0, projectIndex: filteredIdx,
           });
         }
-        selectedMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) cm.mesh.setParent(null); });
+        selectedMeshes.forEach((cm) => { if (!usedMeshes.has(cm)) releaseCm(cm); });
         handoffRef.current = handoff;
         meshesRef.current = [];
         window.dispatchEvent(new Event('resize'));
@@ -667,7 +670,7 @@ export const useFilterDezoom = ({
       tl.kill();
       gsap.ticker.remove(textureTick);
       if (!isComplete) {
-        allMeshes.forEach((cm) => cm.mesh.setParent(null));
+        allMeshes.forEach(releaseCm);
       }
       meshesRef.current = [];
       activeRef.current = false;

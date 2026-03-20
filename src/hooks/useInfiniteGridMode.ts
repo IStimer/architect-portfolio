@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Mesh, Program, Plane, Raycast, Vec2 } from 'ogl';
+import { Mesh, Program, Raycast, Vec2 } from 'ogl';
 import { gsap } from 'gsap';
 import type { OGLContext } from './useOGLRenderer';
 import type { ProjectData } from '../types';
 import { TextureTier, getPlaceholderTexture } from './useTextureManager';
+import { getSharedPlane } from '../services/sharedGeometry';
 import type { TextureEntry } from './useTextureManager';
 import vertexShader from '../shaders/grid/vertex.glsl';
 import fragmentShader from '../shaders/grid/fragment.glsl';
@@ -158,7 +159,7 @@ export const useInfiniteGridMode = ({
     layoutRef.current = layout;
 
     // ── Create mesh pool ──
-    const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+    const sharedGeometry = getSharedPlane(gl);
     const fallbackTex = getPlaceholderTexture(gl);
     const actualPoolSize = Math.min(POOL_SIZE, N);
     const pool: PoolSlot[] = [];

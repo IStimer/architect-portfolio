@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Mesh, Program, Plane, Transform, RenderTarget, Raycast, Vec2 } from 'ogl';
+import { Mesh, Program, Transform, RenderTarget, Raycast, Vec2 } from 'ogl';
+import { getSharedPlane } from '../services/sharedGeometry';
 import { gsap } from 'gsap';
 import type { OGLContext } from './useOGLRenderer';
 import type { ProjectData } from '../types';
@@ -194,7 +195,7 @@ export const useSliderMode = ({
       }
     } else {
       // Normal creation path
-      const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+      const sharedGeometry = getSharedPlane(gl);
       const fallbackTex = getPlaceholderTexture(gl);
 
       for (let slot = 0; slot < actualCount; slot++) {
@@ -389,7 +390,7 @@ export const useSliderMode = ({
       transparent: true,
     });
     const postfxMesh = new Mesh(gl, {
-      geometry: new Plane(gl, { widthSegments: 32, heightSegments: 32 }),
+      geometry: getSharedPlane(gl, 32, 32),
       program: postfxProgram,
     });
     postfxMesh.scale.set(viewport.width, viewport.height, 1);

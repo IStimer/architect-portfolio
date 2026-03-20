@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Mesh, Program, Plane } from 'ogl';
+import { Mesh, Program } from 'ogl';
 import { gsap } from 'gsap';
 import type { OGLContext } from './useOGLRenderer';
 import type { ProjectData } from '../types';
 import type { SlideData } from './useSliderMode';
 import type { TextureEntry } from './useTextureManager';
 import { getPlaceholderTexture } from './useTextureManager';
+import { getSharedPlane } from '../services/sharedGeometry';
 import vertexShader from '../shaders/slider/vertex.glsl';
 import fragmentShader from '../shaders/slider/fragment.glsl';
 
@@ -196,7 +197,7 @@ export const useOpeningAnimation = ({
     );
 
     // ── Create meshes ──
-    const sharedGeometry = new Plane(gl, { widthSegments: 16, heightSegments: 16 });
+    const sharedGeometry = getSharedPlane(gl);
     const fallbackTex = getPlaceholderTexture(gl);
     const allMeshes: ColumnMesh[] = [];
 
