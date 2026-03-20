@@ -27,6 +27,7 @@ const Home = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(!state.introCompleted);
 
@@ -102,13 +103,27 @@ const Home = () => {
   }, []);
 
   const handleCategoryFilter = useCallback((slug: string | null) => {
-    setActiveCategory(slug);
+    if (viewMode === 'slider' && slug !== null) {
+      setPendingCategory(slug);
+      setViewMode('filter-dezoom');
+    } else {
+      // "All" filter or non-slider mode: apply directly
+      setActiveCategory(slug);
+      setCurrentIndex(0);
+    }
+  }, [viewMode]);
+
+  const handleFilterDezoomComplete = useCallback(() => {
+    setActiveCategory(pendingCategory);
+    setPendingCategory(null);
     setCurrentIndex(0);
-  }, []);
+    setViewMode('slider');
+  }, [pendingCategory]);
 
   const isSliderVisible = viewMode === 'slider' || viewMode === 'transitioning-to-grid';
   const isGridVisible = viewMode === 'grid' || viewMode === 'transitioning-to-slider';
   const isOpening = viewMode === 'opening';
+  const isFilterDezoom = viewMode === 'filter-dezoom';
 
   return (
     <>
@@ -130,10 +145,14 @@ const Home = () => {
           viewMode={viewMode}
           currentIndex={currentIndex}
           projects={filteredProjects}
+          allProjects={projects}
+          categories={categories}
+          pendingCategory={pendingCategory}
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
           onTransitionComplete={handleTransitionComplete}
+          onFilterDezoomComplete={handleFilterDezoomComplete}
           openingActive={openingActive}
           onOpeningComplete={handleOpeningComplete}
         />
@@ -141,14 +160,14 @@ const Home = () => {
         {!isOpening && (
           <>
             <SliderOverlay
-              active={canvasActive && isSliderVisible}
+              active={canvasActive && isSliderVisible && !isFilterDezoom}
               currentIndex={currentIndex}
               projects={filteredProjects}
               onJumpTo={handleJumpTo}
             />
 
             <GridOverlay
-              active={canvasActive && isGridVisible}
+              active={canvasActive && isGridVisible && !isFilterDezoom}
               hoveredSlug={hoveredSlug}
               projects={filteredProjects}
             />

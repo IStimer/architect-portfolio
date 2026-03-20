@@ -74,6 +74,11 @@ export const useSliderMode = ({
   getTier,
   initialMeshes,
 }: SliderModeProps): SliderModeHandle => {
+  // Store initialMeshes in a ref so it doesn't trigger effect re-runs
+  // (it's consumed once at init, not a reactive dependency)
+  const initialMeshesRef = useRef(initialMeshes);
+  initialMeshesRef.current = initialMeshes;
+
   const slidesRef = useRef<SlideData[]>([]);
   const slidesSceneRef = useRef<Transform | null>(null);
   const postfxMeshRef = useRef<Mesh | null>(null);
@@ -178,10 +183,11 @@ export const useSliderMode = ({
     const actualCount = Math.min(WINDOW_SIZE, N);
     const slides: SlideData[] = [];
 
-    if (initialMeshes && initialMeshes.length > 0) {
-      // Handoff from opening animation — reparent existing meshes
-      for (let i = 0; i < Math.min(initialMeshes.length, actualCount); i++) {
-        const hm = initialMeshes[i];
+    const initMeshes = initialMeshesRef.current;
+    if (initMeshes && initMeshes.length > 0) {
+      // Handoff from opening/filter animation — reparent existing meshes
+      for (let i = 0; i < Math.min(initMeshes.length, actualCount); i++) {
+        const hm = initMeshes[i];
         hm.mesh.setParent(slidesScene);
         slides.push({ ...hm });
       }
@@ -486,7 +492,8 @@ export const useSliderMode = ({
       renderTargetRef.current = null;
       raycastRef.current = null;
     };
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, jumpTo, markVisible, requestFull, getTier, initialMeshes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, jumpTo, markVisible, requestFull, getTier]);
 
   // ── Resize ──
   useEffect(() => {

@@ -5,17 +5,24 @@ import { useSliderMode } from '../../hooks/useSliderMode';
 import { useInfiniteGridMode } from '../../hooks/useInfiniteGridMode';
 import { useTransitionController } from '../../hooks/useTransitionController';
 import { useOpeningAnimation } from '../../hooks/useOpeningAnimation';
+import { useFilterDezoom } from '../../hooks/useFilterDezoom';
+import type { SliderModeHandle } from '../../hooks/useSliderMode';
 import type { ViewMode, ProjectData } from '../../types';
+import type { SanityCategory } from '../../services/projectService';
 
 interface OGLCanvasProps {
   active: boolean;
   viewMode: ViewMode;
   currentIndex: number;
   projects: ProjectData[];
+  allProjects: ProjectData[];
+  categories: SanityCategory[];
+  pendingCategory: string | null;
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
+  onFilterDezoomComplete: () => void;
   openingActive?: boolean;
   onOpeningComplete?: () => void;
 }
@@ -25,15 +32,20 @@ const OGLCanvas = ({
   viewMode,
   currentIndex,
   projects,
+  allProjects,
+  categories,
+  pendingCategory,
   onIndexChange,
   onHover,
   onNavigate,
   onTransitionComplete,
+  onFilterDezoomComplete,
   openingActive = false,
   onOpeningComplete,
 }: OGLCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const jumpToRef = useRef<((index: number) => void) | null>(null);
+  const sliderHandleRef = useRef<SliderModeHandle | null>(null);
   const { getContext, ready } = useOGLRenderer(containerRef);
 
   const gl = ready ? getContext()?.gl ?? null : null;
@@ -44,7 +56,7 @@ const OGLCanvas = ({
     markVisible,
     requestFull,
     getTier,
-  } = useTextureManager(gl, projects);
+  } = useTextureManager(gl, allProjects);
 
   // Opening animation
   const openingHandle = useOpeningAnimation({
@@ -58,13 +70,31 @@ const OGLCanvas = ({
     markVisible,
   });
 
-  // Slider should not init during opening animation
-  const sliderShouldInit = ready && !openingActive && (viewMode === 'slider' || viewMode === 'transitioning-to-grid');
+  // Slider stays active during filter-dezoom so useFilterDezoom can takeOwnership of its meshes
+  const sliderShouldInit = ready && !openingActive && (viewMode === 'slider' || viewMode === 'transitioning-to-grid' || viewMode === 'filter-dezoom');
   const sliderActive = sliderShouldInit;
   const gridActive = active && ready && (viewMode === 'grid' || viewMode === 'transitioning-to-slider');
+  const filterDezoomActive = active && ready && viewMode === 'filter-dezoom';
 
   // Get handoff meshes from opening animation (if available)
   const handoffSlides = openingHandle.getHandoffSlides();
+
+  // Filter dezoom (uses sliderHandleRef — ref is populated below)
+  const filterDezoomHandle = useFilterDezoom({
+    getContext,
+    active: filterDezoomActive,
+    allProjects,
+    categories,
+    pendingCategory,
+    textures,
+    texturesLoaded,
+    currentIndex,
+    sliderHandleRef,
+    onComplete: onFilterDezoomComplete,
+    markVisible,
+  });
+
+  const filterHandoffSlides = filterDezoomHandle.getHandoffSlides();
 
   const sliderHandle = useSliderMode({
     getContext,
@@ -78,8 +108,11 @@ const OGLCanvas = ({
     markVisible,
     requestFull,
     getTier,
-    initialMeshes: handoffSlides ?? undefined,
+    initialMeshes: handoffSlides ?? filterHandoffSlides ?? undefined,
   });
+
+  // Keep ref in sync so filter dezoom can access the slider
+  sliderHandleRef.current = sliderHandle;
 
   const handleGridHover = useCallback(
     (slug: string | null) => {
