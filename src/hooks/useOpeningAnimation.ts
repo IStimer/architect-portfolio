@@ -1,6 +1,10 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Mesh, Program } from "ogl";
 import { gsap } from "gsap";
+import { CustomEase } from "gsap/CustomEase";
+
+gsap.registerPlugin(CustomEase);
+CustomEase.create("lateDezoom", "M0,0 C0.5,0 0.5,0 0.55,0.03 0.7,0.12 0.88,0.5 1,1");
 import type { OGLContext } from "./useOGLRenderer";
 import type { ProjectData } from "../types";
 import type { SlideData } from "./useSliderMode";
@@ -23,21 +27,18 @@ const COL_SPACING_FRAC = 0.04;
 
 const HERO_START = 0; // hero starts immediately
 const HERO_DURATION = 3.0; // single smooth arc
-const DEZOOM_START = 2; // camera dezoom starts after hero peeks
-const GROUP_START = 0.5; // rest starts earlier
+const DEZOOM_START = 1.2; // delay before dezoom starts
+const GROUP_START = 0; // rest starts early with hero
 const GROUP_DURATION = HERO_START + HERO_DURATION - GROUP_START; // synced to end with hero
 const OUTER_COL_STAGGER = 0.15; // stagger between outer column pairs
-const GAP_EXTRA = 5.0; // extra gap multiplier for first gap (decreases per row)
+const GAP_EXTRA = 3.0; // extra gap multiplier for first gap (decreases per row)
 
-// Dezoom duration synced to end when last outer column settles
-const PHASE2_DURATION =
-  GROUP_START + 3 * OUTER_COL_STAGGER + GROUP_DURATION - DEZOOM_START;
+const PHASE2_DURATION = 1.2;
 
 const PHASE3_CONVERGE_DURATION = 1.0;
 const PHASE3_REZOOM_DURATION = 1.2;
 
 const MOSAIC_PADDING = 1.15;
-
 
 // ── Interfaces ────────────────────────────────────────────────────
 
@@ -315,7 +316,7 @@ export const useOpeningAnimation = ({
     // Camera dezoom
     tl.to(
       camera.position,
-      { z: dezoomCameraZ, duration: PHASE2_DURATION, ease: "power2.out" },
+      { z: dezoomCameraZ, duration: PHASE2_DURATION, ease: "lateDezoom" },
       `entrance+=${DEZOOM_START}`,
     );
 
