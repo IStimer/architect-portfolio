@@ -5,6 +5,21 @@
 
 import type { Mesh, Program } from 'ogl';
 
+/**
+ * Seeded Fisher-Yates shuffle (mulberry32 PRNG).
+ * Mutates the array in place. Deterministic for a given seed.
+ */
+export function seededShuffle<T>(arr: T[], seed: number): void {
+  let s = seed;
+  for (let i = arr.length - 1; i > 0; i--) {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    const r = ((t ^ (t >>> 14)) >>> 0) % (i + 1);
+    [arr[i], arr[r]] = [arr[r], arr[i]];
+  }
+}
+
 export function power3InOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }

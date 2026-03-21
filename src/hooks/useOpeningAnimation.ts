@@ -14,7 +14,7 @@ import type { SlideData } from "./useSliderMode";
 import type { TextureEntry } from "./useTextureManager";
 import { getPlaceholderTexture } from "./useTextureManager";
 import { getSharedPlane } from "../services/sharedGeometry";
-import { addBatchPositionTween } from "../services/batchTween";
+import { addBatchPositionTween, seededShuffle } from "../services/batchTween";
 import type { BatchItem } from "../services/batchTween";
 import vertexShader from "../shaders/slider/vertex.glsl";
 import fragmentShader from "../shaders/slider/fragment.glsl";
@@ -144,24 +144,29 @@ export const useOpeningAnimation = ({
       { length: NUM_COLS },
       () => [],
     );
-    // Shuffled round-robin: deterministic shuffle then distribute.
-    // Avoids the staircase pattern of regular round-robin
-    // (where row 0 of each column has sequential project indices).
-    const shuffled = Array.from({ length: N }, (_, i) => i);
-    // Seeded shuffle (mulberry32) for deterministic results
-    let seed = 9;
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      seed = (seed + 0x6d2b79f5) | 0;
-      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      const r = ((t ^ (t >>> 14)) >>> 0) % (i + 1);
-      [shuffled[i], shuffled[r]] = [shuffled[r], shuffled[i]];
-    }
-    for (let i = 0; i < N; i++) {
-      projectsByCol[i % NUM_COLS].push(shuffled[i]);
-    }
-    // Sort within each column so rows are ordered by project index
-    projectsByCol.forEach((col) => col.sort((a, b) => a - b));
+    // Distribute by proximity to targetIndex:
+    //   Nearest (visible in slider) → cols 1, 3 (adjacent to center)
+    //   Middle distance → col 2 (center)
+    //   Furthest (off-screen) → cols 0, 4 (outer edges)
+    // Then shuffle within each column to avoid visual patterns.
+    const byProximity = Array.from({ length: N }, (_, i) => i).sort((a, b) => {
+      const dA = Math.min(
+        Math.abs(a - targetIndex),
+        N - Math.abs(a - targetIndex),
+      );
+      const dB = Math.min(
+        Math.abs(b - targetIndex),
+        N - Math.abs(b - targetIndex),
+      );
+      return dA - dB;
+    });
+    const colOrder = [CENTER_COL, 1, 3, 0, 4];
+    byProximity.forEach((projIdx, i) => {
+      projectsByCol[colOrder[i % NUM_COLS]].push(projIdx);
+    });
+
+    // Shuffle within each column to avoid visual patterns
+    projectsByCol.forEach((col) => seededShuffle(col, 13));
 
     const maxRowCount = Math.ceil(N / NUM_COLS);
 
