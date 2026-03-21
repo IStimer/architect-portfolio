@@ -8,6 +8,7 @@
 
 import { Mesh, Program } from 'ogl';
 import type { OGLRenderingContext } from 'ogl';
+import { gsap } from 'gsap';
 import { getSharedPlane } from './sharedGeometry';
 
 export interface PooledMesh {
@@ -48,6 +49,11 @@ export function acquireMesh(gl: OGLRenderingContext): PooledMesh {
 
   const existing = pool.idle.pop();
   if (existing) {
+    // Kill any stale GSAP tweens on the position/scale — prevents NaN from
+    // leftover _pt property trackers when reusing the same Vec3 objects
+    gsap.killTweensOf(existing.mesh.position);
+    gsap.killTweensOf(existing.mesh.scale);
+    gsap.killTweensOf(existing.mesh.rotation);
     // Reset uniforms to defaults
     const u = existing.program.uniforms;
     u.u_distortionAmount.value = 0;
@@ -60,6 +66,7 @@ export function acquireMesh(gl: OGLRenderingContext): PooledMesh {
     u.uWindDir.value = [0, 0];
     existing.mesh.position.set(0, 0, 0);
     existing.mesh.rotation.z = 0;
+    existing.mesh.visible = true;
     return existing;
   }
 
