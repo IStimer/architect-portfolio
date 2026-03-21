@@ -4,13 +4,18 @@ import { gsap } from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 
 gsap.registerPlugin(CustomEase);
-CustomEase.create("lateDezoom", "M0,0 C0.5,0 0.5,0 0.55,0.03 0.7,0.12 0.88,0.5 1,1");
+CustomEase.create(
+  "lateDezoom",
+  "M0,0 C0.5,0 0.5,0 0.55,0.03 0.7,0.12 0.88,0.5 1,1",
+);
 import type { OGLContext } from "./useOGLRenderer";
 import type { ProjectData } from "../types";
 import type { SlideData } from "./useSliderMode";
 import type { TextureEntry } from "./useTextureManager";
 import { getPlaceholderTexture } from "./useTextureManager";
 import { getSharedPlane } from "../services/sharedGeometry";
+import { addBatchPositionTween } from "../services/batchTween";
+import type { BatchItem } from "../services/batchTween";
 import vertexShader from "../shaders/slider/vertex.glsl";
 import fragmentShader from "../shaders/slider/fragment.glsl";
 
@@ -35,8 +40,8 @@ const GAP_EXTRA = 3.0; // extra gap multiplier for first gap (decreases per row)
 
 const PHASE2_DURATION = 1.2;
 
-const PHASE3_CONVERGE_DURATION = 1.0;
-const PHASE3_REZOOM_DURATION = 1.2;
+const PHASE3_CONVERGE = 1.0; // all columns merge to center
+const PHASE3_REZOOM = 1.2; // camera rezooms
 
 const MOSAIC_PADDING = 1.15;
 
@@ -139,9 +144,24 @@ export const useOpeningAnimation = ({
       { length: NUM_COLS },
       () => [],
     );
-    for (let i = 0; i < N; i++) {
-      projectsByCol[i % NUM_COLS].push(i);
+    // Shuffled round-robin: deterministic shuffle then distribute.
+    // Avoids the staircase pattern of regular round-robin
+    // (where row 0 of each column has sequential project indices).
+    const shuffled = Array.from({ length: N }, (_, i) => i);
+    // Seeded shuffle (mulberry32) for deterministic results
+    let seed = 9;
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      const r = ((t ^ (t >>> 14)) >>> 0) % (i + 1);
+      [shuffled[i], shuffled[r]] = [shuffled[r], shuffled[i]];
     }
+    for (let i = 0; i < N; i++) {
+      projectsByCol[i % NUM_COLS].push(shuffled[i]);
+    }
+    // Sort within each column so rows are ordered by project index
+    projectsByCol.forEach((col) => col.sort((a, b) => a - b));
 
     const maxRowCount = Math.ceil(N / NUM_COLS);
 
@@ -380,74 +400,48 @@ export const useOpeningAnimation = ({
     );
 
     // ═══════════════════════════════════════════════════════
-    // PHASE 3 — Converge to center column + rezoom
-    //
-    //   3A: All columns converge to center column at animCenterX
-    //   3B: Rezoom Z→5 + X-shift to slider offset
+    // PHASE 3 — Converge + rezoom + X-shift (all simultaneous)
     // ═══════════════════════════════════════════════════════
 
     const phase3Start = phase2End + 0.3;
-    tl.addLabel("phase3a", phase3Start);
+    tl.addLabel("phase3", phase3Start);
 
-    // 3A: Converge — each mesh moves to center column position
-    allMeshes.forEach((cm) => {
+    // DEBUG: log column distributions and positions
+    console.group("[Opening] Phase 3 — column distributions");
+    for (let c = 0; c < NUM_COLS; c++) {
+      const colProjects = projectsByCol[c];
+      console.log(`Col ${c}: projects [${colProjects.join(",")}]`);
+    }
+    // CONVERGE — identical to filter dezoom goingToAll:
+    // addBatchPositionTween + circular slider Y + distortion 0.8
+    const convergeItems: BatchItem[] = allMeshes.map((cm) => {
       let d = (((cm.projectIndex - targetIndex) % N) + N) % N;
       if (d > N / 2) d -= N;
-      const targetY = -d * slideH;
-
-      tl.to(
-        cm.mesh.position,
-        {
-          x: animCenterX,
-          y: targetY,
-          duration: PHASE3_CONVERGE_DURATION,
-          ease: "expo.inOut",
-        },
-        "phase3a",
-      );
+      return {
+        mesh: cm.mesh,
+        program: cm.program,
+        endX: centerX,
+        endY: -d * slideH,
+        delay: 0,
+        startX: 0,
+        startY: 0,
+      };
     });
+    addBatchPositionTween(tl, "phase3", PHASE3_CONVERGE, convergeItems, 0.8);
 
-    // Distortion during convergence (single proxy)
-    const convergeDistProxy = { t: 0 };
-    tl.to(
-      convergeDistProxy,
-      {
-        t: 1,
-        duration: PHASE3_CONVERGE_DURATION,
-        ease: "none",
-        onUpdate: () => {
-          const sinP = Math.sin(convergeDistProxy.t * Math.PI);
-          for (let i = 0; i < allMeshes.length; i++) {
-            allMeshes[i].program.uniforms.u_distortionAmount.value = sinP * 1.2;
-            allMeshes[i].mesh.position.z = sinP * 0.12;
-          }
-        },
-      },
-      "phase3a",
-    );
-
-    // 3B: Rezoom + X-shift to slider offset
-    const phase3bStart = phase3Start + PHASE3_CONVERGE_DURATION + 0.1;
-    tl.addLabel("phase3b", phase3bStart);
+    // REZOOM — after convergence
+    const rezoomStart = phase3Start + PHASE3_CONVERGE + 0.1;
+    tl.addLabel("phase3b", rezoomStart);
 
     tl.to(
       camera.position,
-      { z: 5, duration: PHASE3_REZOOM_DURATION, ease: "expo.inOut" },
+      {
+        z: 5,
+        duration: PHASE3_REZOOM,
+        ease: "power3.inOut",
+      },
       "phase3b",
     );
-
-    // Shift all meshes from screen center to slider centerX
-    allMeshes.forEach((cm) => {
-      tl.to(
-        cm.mesh.position,
-        {
-          x: centerX,
-          duration: PHASE3_REZOOM_DURATION,
-          ease: "expo.inOut",
-        },
-        "phase3b",
-      );
-    });
 
     // ── On Complete ──
     tl.call(
@@ -511,7 +505,7 @@ export const useOpeningAnimation = ({
         });
       },
       [],
-      `phase3b+=${PHASE3_REZOOM_DURATION + 0.1}`,
+      `phase3b+=${PHASE3_REZOOM + 0.1}`,
     );
 
     // Cleanup

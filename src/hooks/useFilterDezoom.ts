@@ -9,6 +9,8 @@ import type { TextureEntry } from './useTextureManager';
 import { getPlaceholderTexture } from './useTextureManager';
 import { initMeshPool, acquireMesh, releaseMesh } from '../services/meshPool';
 import type { PooledMesh } from '../services/meshPool';
+import { addBatchPositionTween, power3InOut } from '../services/batchTween';
+import type { BatchItem } from '../services/batchTween';
 import vertexShader from '../shaders/slider/vertex.glsl';
 import fragmentShader from '../shaders/slider/fragment.glsl';
 
@@ -26,72 +28,6 @@ const SLIDE_OUT_COL_STAGGER = 0.08;
 const SLIDE_IN_COL_STAGGER = 0.08;
 const REZOOM_DURATION = 1.2;
 const MOSAIC_PADDING = 1.15;
-
-// ── Batch tween helper ────────────────────────────────────────────
-
-function power3InOut(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
-interface BatchItem {
-  mesh: Mesh;
-  program: Program;
-  endX: number;
-  endY: number;
-  delay: number; // seconds (absolute, not normalized)
-  startX: number;
-  startY: number;
-}
-
-/**
- * Single proxy tween that drives N mesh positions.
- * Positions are captured in onStart (when tween actually plays, not at build time).
- * Stagger is in seconds — each mesh starts its transition at `delay` after the proxy starts.
- * Each mesh animates for `itemDuration` seconds with power3.inOut easing.
- * Total proxy duration = itemDuration + max(delay).
- */
-function addBatchPositionTween(
-  tl: gsap.core.Timeline,
-  label: string,
-  itemDuration: number,
-  items: BatchItem[],
-  distortion = 0,
-): number {
-  if (items.length === 0) return 0;
-  const maxDelay = items.reduce((m, b) => Math.max(m, b.delay), 0);
-  const totalDuration = itemDuration + maxDelay;
-  const proxy = { t: 0 };
-
-  tl.fromTo(proxy, { t: 0 }, {
-    t: totalDuration,
-    duration: totalDuration,
-    ease: 'none',
-    onStart: () => {
-      // Capture actual positions at the moment the tween starts playing
-      for (let i = 0; i < items.length; i++) {
-        items[i].startX = items[i].mesh.position.x as number;
-        items[i].startY = items[i].mesh.position.y as number;
-      }
-    },
-    onUpdate: () => {
-      const elapsed = proxy.t;
-      for (let i = 0; i < items.length; i++) {
-        const b = items[i];
-        const localElapsed = elapsed - b.delay;
-        if (localElapsed <= 0) continue; // hasn't started yet
-        const raw = Math.min(localElapsed / itemDuration, 1);
-        const eased = power3InOut(raw);
-        b.mesh.position.x = b.startX + (b.endX - b.startX) * eased;
-        b.mesh.position.y = b.startY + (b.endY - b.startY) * eased;
-        if (distortion > 0) {
-          b.program.uniforms.u_distortionAmount.value = Math.sin(raw * Math.PI) * distortion;
-        }
-      }
-    },
-  }, label);
-
-  return totalDuration;
-}
 
 // ── Interfaces ────────────────────────────────────────────────────
 
