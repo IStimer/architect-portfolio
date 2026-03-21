@@ -378,6 +378,23 @@ export const useFilterDezoom = ({
     };
     if (pendingSyncs > 0) gsap.ticker.add(textureTick);
 
+    // ── Frustum culling tick — skip draw calls for off-screen meshes ──
+    const cullTick = () => {
+      if (isComplete) { gsap.ticker.remove(cullTick); return; }
+      const camZ = camera.position.z as number;
+      const vpH = 2 * halfTan * camZ;
+      const vpW = vpH * aspect;
+      const marginX = vpW / 2 + meshW;
+      const marginY = vpH / 2 + meshH;
+      for (let j = 0; j < allMeshes.length; j++) {
+        const pos = allMeshes[j].mesh.position;
+        allMeshes[j].mesh.visible =
+          Math.abs(pos.x as number) < marginX &&
+          Math.abs(pos.y as number) < marginY;
+      }
+    };
+    gsap.ticker.add(cullTick);
+
     // ── Timeline ──
     const tl = gsap.timeline();
     let t = 0; // running time cursor
@@ -498,6 +515,9 @@ export const useFilterDezoom = ({
         isComplete = true;
         camera.position.z = 5;
         gsap.ticker.remove(textureTick);
+        gsap.ticker.remove(cullTick);
+        // Ensure all meshes are visible for handoff (culling may have hidden some)
+        allMeshes.forEach((cm) => { cm.mesh.visible = true; });
 
         const handoffCount = Math.min(N, WINDOW_SIZE);
         const half = Math.floor(handoffCount / 2);
@@ -625,6 +645,8 @@ export const useFilterDezoom = ({
         isComplete = true;
         camera.position.z = 5;
         gsap.ticker.remove(textureTick);
+        gsap.ticker.remove(cullTick);
+        allMeshes.forEach((cm) => { cm.mesh.visible = true; });
 
         otherMeshesForExit.forEach(releaseCm);
 
@@ -669,6 +691,7 @@ export const useFilterDezoom = ({
     cleanupRef.current = () => {
       tl.kill();
       gsap.ticker.remove(textureTick);
+      gsap.ticker.remove(cullTick);
       if (!isComplete) {
         allMeshes.forEach(releaseCm);
       }
