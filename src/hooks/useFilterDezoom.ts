@@ -9,7 +9,7 @@ import type { TextureEntry } from './useTextureManager';
 import { getPlaceholderTexture } from './useTextureManager';
 import { initMeshPool, acquireMesh, releaseMesh } from '../services/meshPool';
 import type { PooledMesh } from '../services/meshPool';
-import { addBatchPositionTween, power3InOut, seededShuffle } from '../services/batchTween';
+import { addBatchPositionTween, power3InOut } from '../services/batchTween';
 import type { BatchItem } from '../services/batchTween';
 import vertexShader from '../shaders/slider/vertex.glsl';
 import fragmentShader from '../shaders/slider/fragment.glsl';
@@ -161,13 +161,6 @@ export const useFilterDezoom = ({
         categorizedIndices.add(i);
       }
     }
-
-    // Shuffle non-selected columns to avoid staircase during convergence.
-    // Selected column stays ordered for proper slider handoff.
-    projectsByCol.forEach((col, c) => {
-      if (c === selectedColIdx) return;
-      seededShuffle(col, 9);
-    });
 
     // ── Mosaic layout ──
     const colGap = meshW * 0.3;
