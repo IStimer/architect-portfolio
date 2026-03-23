@@ -24,7 +24,10 @@ const Home = () => {
   const [viewMode, setViewMode] = useState<ViewMode>(
     state.introCompleted ? 'slider' : 'opening'
   );
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const saved = sessionStorage.getItem('sliderIndex');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
@@ -81,6 +84,7 @@ const Home = () => {
 
   const handleIndexChange = useCallback((index: number) => {
     setCurrentIndex(index);
+    sessionStorage.setItem('sliderIndex', String(index));
   }, []);
 
   const handleHover = useCallback((slug: string | null) => {

@@ -1,9 +1,5 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, type ReactNode } from 'react';
 import { AppState, AppAction, appReducer, createInitialAppState } from '../types';
-
-const STORAGE_KEYS = {
-  INTRO_PLAYED: 'introPlayed',
-} as const;
 
 interface AppStateContextType {
   state: AppState;
@@ -33,30 +29,7 @@ interface AppStateProviderProps {
 }
 
 export const AppStateProvider: React.FC<AppStateProviderProps> = ({ children }) => {
-  const getInitialState = (): AppState => {
-    const baseState = createInitialAppState();
-
-    if (typeof window !== 'undefined') {
-      const hasPlayedIntro = sessionStorage.getItem(STORAGE_KEYS.INTRO_PLAYED) === 'true';
-      if (hasPlayedIntro) {
-        return {
-          ...baseState,
-          isProjectsUnlocked: true,
-          introCompleted: true,
-        };
-      }
-    }
-
-    return baseState;
-  };
-
-  const [state, dispatch] = useReducer(appReducer, undefined, getInitialState);
-
-  useEffect(() => {
-    if (state.introCompleted && typeof window !== 'undefined') {
-      sessionStorage.setItem(STORAGE_KEYS.INTRO_PLAYED, 'true');
-    }
-  }, [state.introCompleted]);
+  const [state, dispatch] = useReducer(appReducer, undefined, createInitialAppState);
 
   const unlockProjects = useCallback(() => {
     dispatch({ type: 'UNLOCK_PROJECTS' });
@@ -68,9 +41,6 @@ export const AppStateProvider: React.FC<AppStateProviderProps> = ({ children }) 
 
   const resetState = useCallback(() => {
     dispatch({ type: 'RESET_STATE' });
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem(STORAGE_KEYS.INTRO_PLAYED);
-    }
   }, []);
 
   const value: AppStateContextType = {
