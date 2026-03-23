@@ -18,7 +18,7 @@ export const revealIn = (
     return { split, tween: gsap.to(el, { duration: 0 }) };
   }
 
-  gsap.set(split.lines, { yPercent: 110 });
+  gsap.set(split.lines, { yPercent: 100 });
   gsap.set(el, { visibility: 'visible' });
 
   const tween = gsap.to(split.lines, {
@@ -46,7 +46,7 @@ export const revealInLines = (
     return { split, tween: gsap.to(el, { duration: 0 }) };
   }
 
-  gsap.set(split.lines, { yPercent: 110 });
+  gsap.set(split.lines, { yPercent: 100 });
   gsap.set(el, { visibility: 'visible' });
 
   const tween = gsap.to(split.lines, {
@@ -75,7 +75,7 @@ export const revealOut = (
   }
 
   const tween = gsap.to(split.lines, {
-    yPercent: -110,
+    yPercent: -100,
     duration,
     ease: 'power3.in',
     onComplete

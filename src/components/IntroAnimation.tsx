@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
@@ -14,172 +14,71 @@ interface IntroAnimationProps {
   exiting?: boolean;
 }
 
-const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
-  const { t } = useTranslation(['home', 'common']);
-  const [canClick, setCanClick] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const welcomeRef = useRef<HTMLDivElement>(null);
-  const discoverRef = useRef<HTMLDivElement>(null);
-  const timelineRef = useRef<gsap.core.Timeline | null>(null);
+const MIN_DURATION = 2.5; // seconds — minimum time before unlock
 
+const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
+  const { t } = useTranslation(['home']);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLHeadingElement>(null);
+  const roleRef = useRef<HTMLParagraphElement>(null);
   const splitTextsRef = useRef<SplitText[]>([]);
-  const hasDiscoveredRef = useRef(false);
+  const hasUnlockedRef = useRef(false);
+  const startTimeRef = useRef(0);
 
   useEffect(() => {
-    if (!containerRef.current || !welcomeRef.current || !discoverRef.current) return;
+    if (!containerRef.current || !nameRef.current || !roleRef.current) return;
 
     const reduced = prefersReducedMotion();
-
-    const welcomeWrappers = welcomeRef.current.querySelectorAll<HTMLElement>('.scramble-wrapper');
-    const discoverWrapper = discoverRef.current.querySelector<HTMLElement>('.scramble-wrapper');
-
     if (reduced) {
-      if (welcomeRef.current) welcomeRef.current.style.display = 'none';
-      if (discoverRef.current) gsap.set(discoverRef.current, { opacity: 1 });
-      if (discoverWrapper) {
-        const arrowEl = discoverWrapper.querySelector('.discover-arrow') as HTMLElement;
-        if (arrowEl) gsap.set(arrowEl, { visibility: 'visible' });
-      }
-      if (discoverRef.current) gsap.set(discoverRef.current, { '--brackets-opacity': 1 } as any);
-      setCanClick(true);
+      onUnlock?.();
       return;
     }
 
-    // Hide text elements before animation
-    welcomeWrappers.forEach(wrapper => {
-      const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
-      if (textEl) gsap.set(textEl, { visibility: 'hidden' });
+    // Reveal name + role
+    document.fonts.ready.then(() => {
+      if (!nameRef.current || !roleRef.current) return;
+      const { split: s1 } = revealIn(nameRef.current, { duration: 1 });
+      const { split: s2 } = revealIn(roleRef.current, { duration: 1, delay: 0.1 });
+      splitTextsRef.current.push(s1, s2);
     });
 
-    const welcomeAppearTimeline = gsap.timeline({ id: "welcome appear" });
-    welcomeWrappers.forEach((wrapper, index) => {
-      const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
-      if (!textEl) return;
+    // Wait for minimum duration + textures loaded
+    startTimeRef.current = performance.now();
 
-      welcomeAppearTimeline.add(() => {
-        const { split } = revealIn(textEl, { duration: 0.8 });
-        splitTextsRef.current.push(split);
-      }, index * 0.15);
-    });
-
-    const welcomeLeaveTimeline = gsap.timeline({ id: "welcome leave" });
-    const reversedWrappers = Array.from(welcomeWrappers).reverse();
-    reversedWrappers.forEach((wrapper, index) => {
-      const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
-
-      welcomeLeaveTimeline.add(() => {
-        const { split } = revealOut(textEl, { duration: 0.5 });
-        splitTextsRef.current.push(split);
-      }, index * 0.1);
-    });
-
-    const discoverTimeline = gsap.timeline({ id: "discover" });
-    if (discoverWrapper) {
-      const textEl = discoverWrapper.querySelector('.scramble-text') as HTMLElement;
-      const arrowEl = discoverWrapper.querySelector('.discover-arrow') as HTMLElement;
-
-      const arrowPaths = arrowEl ? arrowEl.querySelectorAll('path') : [];
-      if (arrowEl) gsap.set(arrowEl, { visibility: 'hidden' });
-      arrowPaths.forEach((path) => {
-        const length = path.getTotalLength();
-        gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
-      });
-
-      if (textEl) gsap.set(textEl, { visibility: 'hidden' });
-
-      discoverTimeline
-        .set(discoverRef.current, { opacity: 1 })
-        .add(() => {
-          const { split } = revealIn(textEl, {
-            duration: 0.7,
-            onComplete: () => setCanClick(true)
-          });
-          splitTextsRef.current.push(split);
-        });
-
-      if (arrowEl) discoverTimeline.set(arrowEl, { visibility: 'visible' });
-      arrowPaths.forEach((path) => {
-        discoverTimeline.to(path, {
-          strokeDashoffset: 0,
-          duration: 0.4,
-          ease: 'power2.inOut'
-        });
-      });
-
-      if (discoverRef.current) {
-        gsap.set(discoverRef.current, { '--brackets-opacity': 0 });
-        discoverTimeline.to(discoverRef.current, {
-          '--brackets-opacity': 1,
-          duration: 0.5,
-          ease: 'power2.out'
-        }, '+=1');
-      }
-    }
-
-    const mainTimeline = gsap.timeline({ id: "intro animation" });
-    timelineRef.current = mainTimeline;
-
-    mainTimeline
-      .add(welcomeAppearTimeline)
-      .add(welcomeLeaveTimeline, "+=2.5")
-      .add(discoverTimeline, "+=0.1");
+    gsap.delayedCall(MIN_DURATION, triggerUnlock);
 
     return () => {
-      mainTimeline.kill();
       splitTextsRef.current.forEach(st => st.revert());
       splitTextsRef.current = [];
     };
   }, []);
 
-  const handleDiscoverClick = useCallback(() => {
-    if (!canClick || !discoverRef.current || hasDiscoveredRef.current) return;
-    hasDiscoveredRef.current = true;
+  const triggerUnlock = () => {
+    if (hasUnlockedRef.current) return;
+    hasUnlockedRef.current = true;
 
-    const discoverWrapper = discoverRef.current.querySelector<HTMLElement>('.scramble-wrapper');
+    const nameEl = nameRef.current;
+    const roleEl = roleRef.current;
+    if (!nameEl || !roleEl) { onUnlock?.(); return; }
 
-    if (discoverWrapper) {
-      const textEl = discoverWrapper.querySelector('.scramble-text') as HTMLElement;
-      if (textEl) {
-        const { split } = revealOut(textEl, { duration: 0.5 });
-        splitTextsRef.current.push(split);
-      }
-    }
+    const { split: s1 } = revealOut(nameEl, { duration: 0.5 });
+    const { split: s2 } = revealOut(roleEl, { duration: 0.5 });
+    splitTextsRef.current.push(s1, s2);
 
-    if (onUnlock) onUnlock();
-  }, [canClick, onUnlock]);
+    // Launch opening immediately — plays while text slides out
+    onUnlock?.();
+  };
 
   return (
     <div
       ref={containerRef}
-      className={`intro-animation ${canClick ? 'clickable' : ''}${exiting ? ' intro-animation--exiting' : ''}`}
+      className={`intro-animation${exiting ? ' intro-animation--exiting' : ''}`}
     >
-        <div
-          ref={welcomeRef}
-          className="intro-text welcome-text"
-        >
-          <div className="scramble-wrapper">
-            <span className="scramble-text">{t('home:intro.welcome1')}</span>
-          </div>
-          <div className="scramble-wrapper">
-            <span className="scramble-text">{t('home:intro.welcome2')}</span>
-          </div>
-        </div>
-
-        <div
-          ref={discoverRef}
-          className={`intro-text discover-text ${canClick ? 'clickable' : ''}`}
-          onClick={handleDiscoverClick}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDiscoverClick(); } }}
-          role="button"
-          tabIndex={canClick ? 0 : -1}
-          aria-label={t('common:nav.discoverProjects')}
-        >
-          <div className="scramble-wrapper">
-            <span className="scramble-text">{t('common:nav.discoverProjects')}</span>
-            <svg className="discover-arrow" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 10L10 2" stroke="currentColor" strokeWidth="1"/><path d="M4 2H10V8" stroke="currentColor" strokeWidth="0.9"/></svg>
-          </div>
-        </div>
+      <div className="intro-left">
+        <h1 ref={nameRef} className="intro-name">{t('home:intro.welcome1')}</h1>
+        <p ref={roleRef} className="intro-role">{t('home:intro.welcome2')}</p>
       </div>
+    </div>
   );
 };
 
