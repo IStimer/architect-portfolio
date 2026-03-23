@@ -60,6 +60,7 @@ interface FilterDezoomProps {
   sliderHandleRef: React.RefObject<SliderModeHandle | null>;
   onComplete: () => void;
   markVisible?: (slugs: Set<string>) => void;
+  requestFull?: (slug: string) => void;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ export const useFilterDezoom = ({
   sliderHandleRef,
   onComplete,
   markVisible,
+  requestFull,
 }: FilterDezoomProps): FilterDezoomHandle => {
   const meshesRef = useRef<ColumnMesh[]>([]);
   const handoffRef = useRef<SlideData[] | null>(null);
@@ -97,6 +99,8 @@ export const useFilterDezoom = ({
   activeCategoryRef.current = activeCategory;
   const texturesRef = useRef(textures);
   texturesRef.current = textures;
+  const requestFullRef = useRef(requestFull);
+  requestFullRef.current = requestFull;
 
   useEffect(() => {
     if (!active || !texturesLoaded || categories.length === 0) return;
@@ -439,6 +443,16 @@ export const useFilterDezoom = ({
 
       // Rezoom
       tl.addLabel('rezoom', t);
+
+      // Request FULL textures for target slide + neighbors during rezoom
+      tl.call(() => {
+        const idx = currentIndexRef.current;
+        const half = 4;
+        for (let i = idx - half; i <= idx + half; i++) {
+          const pi = ((i % allProjects.length) + allProjects.length) % allProjects.length;
+          requestFullRef.current?.(allProjects[pi].slug);
+        }
+      }, [], 'rezoom');
       tl.to(camera.position, {
         z: 5,
         duration: REZOOM_DURATION,
@@ -493,6 +507,18 @@ export const useFilterDezoom = ({
 
     } else {
       // ── To specific filter: slide-out + rezoom simultaneously (1 batch) ──
+
+      // Request FULL textures for the selected filter's projects during exit
+      tl.call(() => {
+        const selectedProjects = projectsByCol[selectedColIdx];
+        const half = Math.floor(WINDOW_SIZE / 2);
+        for (let i = 0; i < Math.min(selectedProjects.length, WINDOW_SIZE); i++) {
+          const offset = i - half;
+          const pi = ((offset % selectedProjects.length) + selectedProjects.length) % selectedProjects.length;
+          requestFullRef.current?.(allProjects[selectedProjects[pi]].slug);
+        }
+      }, [], 'exit');
+
       const exitItems: BatchItem[] = [];
 
       // Slide-out: non-selected columns with column stagger

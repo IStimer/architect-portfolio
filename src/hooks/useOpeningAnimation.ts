@@ -60,6 +60,7 @@ interface OpeningAnimationProps {
   currentIndex: number;
   onComplete: () => void;
   markVisible?: (slugs: Set<string>) => void;
+  requestFull?: (slug: string) => void;
 }
 
 interface ColumnMesh {
@@ -85,6 +86,7 @@ export const useOpeningAnimation = ({
   currentIndex,
   onComplete,
   markVisible,
+  requestFull,
 }: OpeningAnimationProps): OpeningAnimationHandle => {
   const handoffRef = useRef<SlideData[] | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -95,6 +97,8 @@ export const useOpeningAnimation = ({
   onCompleteRef.current = onComplete;
   const markVisibleRef = useRef(markVisible);
   markVisibleRef.current = markVisible;
+  const requestFullRef = useRef(requestFull);
+  requestFullRef.current = requestFull;
   const currentIndexRef = useRef(currentIndex);
   currentIndexRef.current = currentIndex;
   const projectsRef = useRef(projects);
@@ -437,6 +441,17 @@ export const useOpeningAnimation = ({
     // REZOOM — after convergence
     const rezoomStart = phase3Start + PHASE3_CONVERGE + 0.1;
     tl.addLabel("phase3b", rezoomStart);
+
+    // Request FULL textures for the hero slide + neighbors during rezoom
+    tl.call(() => {
+      const idx = currentIndexRef.current;
+      const prj = projectsRef.current;
+      const half = Math.floor(WINDOW_SIZE / 2);
+      for (let i = idx - half; i <= idx + half; i++) {
+        const pi = ((i % prj.length) + prj.length) % prj.length;
+        requestFullRef.current?.(prj[pi].slug);
+      }
+    }, [], "phase3b");
 
     tl.to(
       camera.position,

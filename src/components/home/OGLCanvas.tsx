@@ -70,6 +70,7 @@ const OGLCanvas = ({
     currentIndex,
     onComplete: onOpeningComplete ?? (() => {}),
     markVisible,
+    requestFull,
   });
 
   // Slider stays active during filter-dezoom so useFilterDezoom can takeOwnership of its meshes
@@ -95,6 +96,7 @@ const OGLCanvas = ({
     sliderHandleRef,
     onComplete: onFilterDezoomComplete,
     markVisible,
+    requestFull,
   });
 
   const filterHandoffSlides = filterDezoomHandle.getHandoffSlides();
@@ -157,6 +159,7 @@ const OGLCanvas = ({
     gridHandle,
     onTransitionComplete,
     onIndexChange,
+    requestFull,
   });
 
   // Sync grid scroll anchor from transition controller

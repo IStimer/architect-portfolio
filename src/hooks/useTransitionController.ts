@@ -16,6 +16,7 @@ interface TransitionControllerProps {
   gridHandle: GridModeHandle;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
   onIndexChange?: (index: number) => void;
+  requestFull?: (slug: string) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ export const useTransitionController = ({
   gridHandle,
   onTransitionComplete,
   onIndexChange,
+  requestFull,
 }: TransitionControllerProps) => {
   const isAnimatingRef = useRef(false);
   const gridScrollAnchorRef = useRef<{ x: number; y: number } | null>(null);
@@ -120,6 +122,8 @@ export const useTransitionController = ({
   onCompleteRef.current = onTransitionComplete;
   const onIndexChangeRef = useRef(onIndexChange);
   onIndexChangeRef.current = onIndexChange;
+  const requestFullRef = useRef(requestFull);
+  requestFullRef.current = requestFull;
 
   useEffect(() => {
     const toGrid = viewMode === 'transitioning-to-grid';
@@ -208,6 +212,13 @@ export const useTransitionController = ({
 
       if (onIndexChangeRef.current) {
         onIndexChangeRef.current(idx);
+      }
+
+      // Request FULL textures for target slide + neighbors during transition
+      const half = 4;
+      for (let i = idx - half; i <= idx + half; i++) {
+        const pi = ((i % prj.length) + prj.length) % prj.length;
+        requestFullRef.current?.(prj[pi].slug);
       }
     } else {
       idx = currentIndexRef.current;
