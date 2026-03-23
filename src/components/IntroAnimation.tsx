@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
-import { scrambleIn, scrambleOut } from '../utils/scrambleText';
+import { revealIn, revealOut } from '../utils/revealText';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 import '../styles/components/IntroAnimation.scss';
 
@@ -22,8 +22,6 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
   const discoverRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
 
-  const delayedCallsRef = useRef<gsap.core.Tween[]>([]);
-  const clickTimelinesRef = useRef<gsap.core.Timeline[]>([]);
   const splitTextsRef = useRef<SplitText[]>([]);
   const hasDiscoveredRef = useRef(false);
 
@@ -36,34 +34,32 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
     const discoverWrapper = discoverRef.current.querySelector<HTMLElement>('.scramble-wrapper');
 
     if (reduced) {
-      welcomeWrappers.forEach(wrapper => {
-        const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
-        if (textEl) textEl.textContent = textEl.dataset.text || '';
-      });
-
       if (welcomeRef.current) welcomeRef.current.style.display = 'none';
       if (discoverRef.current) gsap.set(discoverRef.current, { opacity: 1 });
       if (discoverWrapper) {
-        const textEl = discoverWrapper.querySelector('.scramble-text') as HTMLElement;
-        if (textEl) textEl.textContent = textEl.dataset.text || '';
         const arrowEl = discoverWrapper.querySelector('.discover-arrow') as HTMLElement;
         if (arrowEl) gsap.set(arrowEl, { visibility: 'visible' });
       }
       if (discoverRef.current) gsap.set(discoverRef.current, { '--brackets-opacity': 1 } as any);
-
       setCanClick(true);
       return;
     }
+
+    // Hide text elements before animation
+    welcomeWrappers.forEach(wrapper => {
+      const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
+      if (textEl) gsap.set(textEl, { visibility: 'hidden' });
+    });
 
     const welcomeAppearTimeline = gsap.timeline({ id: "welcome appear" });
     welcomeWrappers.forEach((wrapper, index) => {
       const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
       if (!textEl) return;
 
-      welcomeAppearTimeline.add(
-        scrambleIn(textEl, { duration: 1.8, revealDelay: 0, speed: 0.3 }),
-        index * 0.15
-      );
+      welcomeAppearTimeline.add(() => {
+        const { split } = revealIn(textEl, { duration: 0.8 });
+        splitTextsRef.current.push(split);
+      }, index * 0.15);
     });
 
     const welcomeLeaveTimeline = gsap.timeline({ id: "welcome leave" });
@@ -71,10 +67,10 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
     reversedWrappers.forEach((wrapper, index) => {
       const textEl = wrapper.querySelector('.scramble-text') as HTMLElement;
 
-      welcomeLeaveTimeline.add(
-        scrambleOut(textEl, { duration: 0.7 }),
-        index * 0.1
-      );
+      welcomeLeaveTimeline.add(() => {
+        const { split } = revealOut(textEl, { duration: 0.5 });
+        splitTextsRef.current.push(split);
+      }, index * 0.1);
     });
 
     const discoverTimeline = gsap.timeline({ id: "discover" });
@@ -89,16 +85,17 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
         gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
       });
 
+      if (textEl) gsap.set(textEl, { visibility: 'hidden' });
+
       discoverTimeline
         .set(discoverRef.current, { opacity: 1 })
-        .add(
-          scrambleIn(textEl, {
+        .add(() => {
+          const { split } = revealIn(textEl, {
             duration: 0.7,
-            revealDelay: 0,
-            speed: 0.4,
             onComplete: () => setCanClick(true)
-          })
-        );
+          });
+          splitTextsRef.current.push(split);
+        });
 
       if (arrowEl) discoverTimeline.set(arrowEl, { visibility: 'visible' });
       arrowPaths.forEach((path) => {
@@ -129,10 +126,6 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
 
     return () => {
       mainTimeline.kill();
-      delayedCallsRef.current.forEach(dc => dc.kill());
-      delayedCallsRef.current = [];
-      clickTimelinesRef.current.forEach(tl => tl.kill());
-      clickTimelinesRef.current = [];
       splitTextsRef.current.forEach(st => st.revert());
       splitTextsRef.current = [];
     };
@@ -146,10 +139,12 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
 
     if (discoverWrapper) {
       const textEl = discoverWrapper.querySelector('.scramble-text') as HTMLElement;
-      scrambleOut(textEl, { duration: 0.8 });
+      if (textEl) {
+        const { split } = revealOut(textEl, { duration: 0.5 });
+        splitTextsRef.current.push(split);
+      }
     }
 
-    // Call onUnlock immediately — the opening animation starts behind the fading text
     if (onUnlock) onUnlock();
   }, [canClick, onUnlock]);
 
@@ -163,10 +158,10 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
           className="intro-text welcome-text"
         >
           <div className="scramble-wrapper">
-            <span className="scramble-text" data-text={t('home:intro.welcome1')}></span>
+            <span className="scramble-text">{t('home:intro.welcome1')}</span>
           </div>
           <div className="scramble-wrapper">
-            <span className="scramble-text" data-text={t('home:intro.welcome2')}></span>
+            <span className="scramble-text">{t('home:intro.welcome2')}</span>
           </div>
         </div>
 
@@ -180,7 +175,7 @@ const IntroAnimation = ({ onUnlock, exiting = false }: IntroAnimationProps) => {
           aria-label={t('common:nav.discoverProjects')}
         >
           <div className="scramble-wrapper">
-            <span className="scramble-text" data-text={t('common:nav.discoverProjects')}></span>
+            <span className="scramble-text">{t('common:nav.discoverProjects')}</span>
             <svg className="discover-arrow" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 10L10 2" stroke="currentColor" strokeWidth="1"/><path d="M4 2H10V8" stroke="currentColor" strokeWidth="0.9"/></svg>
           </div>
         </div>

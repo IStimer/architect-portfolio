@@ -56,7 +56,6 @@
         cursor: pointer;
         transition: opacity 0.3s ease;
         font-weight: 300;
-        text-transform: uppercase;
         @include text-xs;
     }
 
@@ -123,8 +122,6 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            text-transform: uppercase;
-
             @media (min-width: 769px) {
                 align-items: flex-start;
             }
@@ -266,7 +263,6 @@
 
     &__scroll-text {
         min-height: clamp(10px, 0.8vw, 14px);
-        text-transform: uppercase;
         @include text-xs;
     }
 
@@ -700,7 +696,6 @@
     text-align: center;
 
     &__label {
-        text-transform: uppercase;
         @include text-xs;
     }
 
@@ -712,7 +707,6 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        text-transform: uppercase;
         padding: var(--spacer-s);
     }
 
@@ -731,7 +725,6 @@
         color: #ffffff;
         padding: var(--spacer-xs) var(--spacer-md);
         cursor: pointer;
-        text-transform: uppercase;
         @include text-xs;
         @include corner-brackets(8px, 1px, #fff, -4px, -1px);
     }

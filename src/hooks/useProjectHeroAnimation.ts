@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react';
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
-import { scrambleIn, scrambleInLines, SCRAMBLE_CHARS } from '../utils/scrambleText';
+import { revealIn, revealInLines } from '../utils/revealText';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 
 gsap.registerPlugin(SplitText);
@@ -34,7 +34,6 @@ export const useProjectHeroAnimation = ({
     let ctx: gsap.Context;
     let startRafId: number;
 
-    // Wait for fonts to be ready before animating
     Promise.all([
       document.fonts.ready,
     ]).then(() => {
@@ -43,14 +42,12 @@ export const useProjectHeroAnimation = ({
       const reduced = prefersReducedMotion();
 
       if (reduced) {
-        const allScramble = container.querySelectorAll<HTMLElement>('.scramble-text');
-        allScramble.forEach(el => {
-          el.textContent = el.dataset.text || el.textContent || '';
-          gsap.set(el, { visibility: 'visible', clipPath: '' });
-          if (el.parentElement) el.parentElement.style.height = '';
-        });
         if (titleRef.current) gsap.set(titleRef.current, { visibility: 'visible' });
         if (subtitleRef.current) gsap.set(subtitleRef.current, { visibility: 'visible' });
+        const descriptionEl = container.querySelector<HTMLElement>('.project-hero__description .scramble-text');
+        if (descriptionEl) gsap.set(descriptionEl, { visibility: 'visible' });
+        const scrambleEls = container.querySelectorAll<HTMLElement>('.scramble-text');
+        scrambleEls.forEach(el => gsap.set(el, { visibility: 'visible' }));
         const linkEls = container.querySelectorAll<HTMLElement>('.project-hero__link');
         const arrowEl = container.querySelector<HTMLElement>('.project-hero__scroll-arrow');
         linkEls.forEach(el => gsap.set(el, { opacity: 1 }));
@@ -63,21 +60,9 @@ export const useProjectHeroAnimation = ({
       const descriptionEl = container.querySelector<HTMLElement>('.project-hero__description .scramble-text');
       const scrambleEls = Array.from(container.querySelectorAll<HTMLElement>('.scramble-text')).filter(el => el !== descriptionEl);
 
-      scrambleEls.forEach(el => {
-        const parent = el.parentElement;
-        if (parent) parent.style.height = `${parent.getBoundingClientRect().height}px`;
-      });
-      scrambleEls.forEach(el => {
-        const target = el.dataset.text || el.textContent || '';
-        el.textContent = target.replace(/[^ ]/g, () =>
-          SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]
-        );
-        gsap.set(el, { visibility: 'hidden' });
-      });
+      scrambleEls.forEach(el => gsap.set(el, { visibility: 'hidden' }));
+      if (descriptionEl) gsap.set(descriptionEl, { visibility: 'hidden' });
 
-      if (descriptionEl) {
-        gsap.set(descriptionEl, { visibility: 'hidden' });
-      }
       const linkEls = container.querySelectorAll<HTMLElement>('.project-hero__link');
       const arrowEl = container.querySelector<HTMLElement>('.project-hero__scroll-arrow');
       linkEls.forEach(el => gsap.set(el, { opacity: 0 }));
@@ -125,35 +110,18 @@ export const useProjectHeroAnimation = ({
 
           gsap.delayedCall(contentDelay, () => {
             if (descriptionEl) {
-              const { split } = scrambleInLines(descriptionEl, {
-                duration: 1.2,
-                revealDelay: 0.15,
-                speed: 0.4,
-                stagger: 0.2
+              const { split } = revealInLines(descriptionEl, {
+                duration: isMobile ? 0.6 : 0.8
               });
               splits.push(split);
-              gsap.set(descriptionEl, { visibility: 'visible' });
             }
 
-            let completed = 0;
             scrambleEls.forEach((el, index) => {
-              gsap.set(el, { visibility: 'visible', clipPath: 'inset(0 100% 0 0)' });
               gsap.delayedCall(index * 0.04, () => {
-                scrambleIn(el, {
-                  duration: isMobile ? 0.6 : 1.5,
-                  revealDelay: isMobile ? 0.1 : 0.2,
-                  speed: isMobile ? 0.5 : 0.3,
-                  withClip: true,
-                  clipDuration: isMobile ? 0.4 : 0.6,
-                  onComplete: () => {
-                    completed++;
-                    if (completed === scrambleEls.length) {
-                      scrambleEls.forEach(s => {
-                        if (s.parentElement) s.parentElement.style.height = '';
-                      });
-                    }
-                  }
+                const { split } = revealIn(el, {
+                  duration: isMobile ? 0.6 : 0.8,
                 });
+                splits.push(split);
               });
             });
 

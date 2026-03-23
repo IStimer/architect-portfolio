@@ -4,7 +4,7 @@ import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ProjectData } from '../../types';
-import { scrambleIn, scrambleInLines, SCRAMBLE_CHARS } from '../../utils/scrambleText';
+import { revealIn, revealInLines } from '../../utils/revealText';
 import { prefersReducedMotion } from '../../utils/prefersReducedMotion';
 
 gsap.registerPlugin(SplitText, ScrollTrigger);
@@ -33,11 +33,7 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
 
       if (reduced) {
         const allScramble = container.querySelectorAll<HTMLElement>('.scramble-text');
-        allScramble.forEach(el => {
-          el.textContent = el.dataset.text || el.textContent || '';
-          gsap.set(el, { visibility: 'visible', clipPath: '' });
-          if (el.parentElement) el.parentElement.style.height = '';
-        });
+        allScramble.forEach(el => gsap.set(el, { visibility: 'visible' }));
         if (subtitleRef.current) gsap.set(subtitleRef.current, { visibility: 'visible' });
         const linkEls = container.querySelectorAll<HTMLElement>('.project-info__link');
         linkEls.forEach(el => gsap.set(el, { opacity: 1 }));
@@ -57,21 +53,8 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
       const descriptionEl = container.querySelector<HTMLElement>('.project-info__description .scramble-text');
       const scrambleEls = Array.from(container.querySelectorAll<HTMLElement>('.scramble-text')).filter(el => el !== descriptionEl);
 
-      scrambleEls.forEach(el => {
-        const parent = el.parentElement;
-        if (parent) parent.style.height = `${parent.getBoundingClientRect().height}px`;
-      });
-      scrambleEls.forEach(el => {
-        const target = el.dataset.text || el.textContent || '';
-        el.textContent = target.replace(/[^ ]/g, () =>
-          SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]
-        );
-        gsap.set(el, { visibility: 'hidden' });
-      });
-
-      if (descriptionEl) {
-        gsap.set(descriptionEl, { visibility: 'hidden' });
-      }
+      scrambleEls.forEach(el => gsap.set(el, { visibility: 'hidden' }));
+      if (descriptionEl) gsap.set(descriptionEl, { visibility: 'hidden' });
 
       const linkEls = container.querySelectorAll<HTMLElement>('.project-info__link');
       linkEls.forEach(el => gsap.set(el, { opacity: 0 }));
@@ -85,7 +68,6 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
           once: true,
           onEnter: () => {
             if (subtitleRef.current) {
-              gsap.set(subtitleRef.current, { visibility: 'visible' });
               const subtitleSplit = SplitText.create(subtitleRef.current, {
                 type: 'lines',
                 mask: 'lines'
@@ -93,6 +75,7 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
               splits.push(subtitleSplit);
 
               gsap.set(subtitleSplit.lines, { yPercent: 110 });
+              gsap.set(subtitleRef.current, { visibility: 'visible' });
               gsap.to(subtitleSplit.lines, {
                 yPercent: 0,
                 duration: 0.7,
@@ -102,35 +85,18 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
 
             gsap.delayedCall(0.3, () => {
               if (descriptionEl) {
-                gsap.set(descriptionEl, { visibility: 'visible' });
-                const { split } = scrambleInLines(descriptionEl, {
-                  duration: 1.2,
-                  revealDelay: 0.15,
-                  speed: 0.4,
-                  stagger: 0.2
+                const { split } = revealInLines(descriptionEl, {
+                  duration: 0.8
                 });
                 splits.push(split);
               }
 
-              let completed = 0;
               scrambleEls.forEach((el, index) => {
-                gsap.set(el, { visibility: 'visible', clipPath: 'inset(0 100% 0 0)' });
                 gsap.delayedCall(index * 0.04, () => {
-                  scrambleIn(el, {
-                    duration: 1.5,
-                    revealDelay: 0.2,
-                    speed: 0.3,
-                    withClip: true,
-                    clipDuration: 0.6,
-                    onComplete: () => {
-                      completed++;
-                      if (completed === scrambleEls.length) {
-                        scrambleEls.forEach(s => {
-                          if (s.parentElement) s.parentElement.style.height = '';
-                        });
-                      }
-                    }
+                  const { split } = revealIn(el, {
+                    duration: 0.8,
                   });
+                  splits.push(split);
                 });
               });
 
@@ -161,11 +127,11 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
     <div ref={containerRef} className="project-info">
       <p ref={subtitleRef} className="project-info__subtitle">{project.subtitle}</p>
       <p className="project-info__description">
-        <span className="scramble-text" data-text={project.description}>{project.description}</span>
+        <span className="scramble-text">{project.description}</span>
       </p>
       <div className="project-info__meta-row">
         <span className="project-info__year">
-          <span className="scramble-text" data-text={String(project.year)}>{String(project.year)}</span>
+          <span className="scramble-text">{String(project.year)}</span>
         </span>
         {(project.liveUrl || project.githubUrl) && (
           <div className="project-info__links">
@@ -187,28 +153,28 @@ export const ProjectInfo = ({ project }: ProjectInfoProps) => {
       </div>
       <div className="project-info__info-block">
         <div className="project-info__info-item">
-          <span className="project-info__info-label"><span className="scramble-text" data-text={t('labels.client')}>{t('labels.client')}</span></span>
-          <span className="project-info__info-value"><span className="scramble-text" data-text={project.client}>{project.client}</span></span>
+          <span className="project-info__info-label"><span className="scramble-text">{t('labels.client')}</span></span>
+          <span className="project-info__info-value"><span className="scramble-text">{project.client}</span></span>
         </div>
         <div className="project-info__info-item">
-          <span className="project-info__info-label"><span className="scramble-text" data-text={t('labels.role')}>{t('labels.role')}</span></span>
-          <span className="project-info__info-value"><span className="scramble-text" data-text={project.role}>{project.role}</span></span>
+          <span className="project-info__info-label"><span className="scramble-text">{t('labels.role')}</span></span>
+          <span className="project-info__info-value"><span className="scramble-text">{project.role}</span></span>
         </div>
         <div className="project-info__info-item">
-          <span className="project-info__info-label"><span className="scramble-text" data-text={t('labels.stack')}>{t('labels.stack')}</span></span>
-          <span className="project-info__info-value"><span className="scramble-text" data-text={project.stack.join(', ')}>{project.stack.join(', ')}</span></span>
+          <span className="project-info__info-label"><span className="scramble-text">{t('labels.stack')}</span></span>
+          <span className="project-info__info-value"><span className="scramble-text">{project.stack.join(', ')}</span></span>
         </div>
         {project.contractType && (
           <div className="project-info__info-item">
-            <span className="project-info__info-label"><span className="scramble-text" data-text={t('labels.type')}>{t('labels.type')}</span></span>
-            <span className="project-info__info-value"><span className="scramble-text" data-text={project.contractType}>{project.contractType}</span></span>
+            <span className="project-info__info-label"><span className="scramble-text">{t('labels.type')}</span></span>
+            <span className="project-info__info-value"><span className="scramble-text">{project.contractType}</span></span>
           </div>
         )}
       </div>
       {project.keyMetric && (
         <div className="project-info__metric">
-          <span className="project-info__metric-value"><span className="scramble-text" data-text={project.keyMetric.value}>{project.keyMetric.value}</span></span>
-          <span className="project-info__metric-label"><span className="scramble-text" data-text={project.keyMetric.label}>{project.keyMetric.label}</span></span>
+          <span className="project-info__metric-value"><span className="scramble-text">{project.keyMetric.value}</span></span>
+          <span className="project-info__metric-label"><span className="scramble-text">{project.keyMetric.label}</span></span>
         </div>
       )}
     </div>
