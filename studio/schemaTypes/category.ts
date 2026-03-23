@@ -35,6 +35,15 @@ export const category = defineType({
       validation: (rule) => rule.required(),
     }),
     defineField({
+      name: 'description',
+      title: 'Description',
+      type: 'object',
+      fields: [
+        defineField({ name: 'fr', title: 'Français', type: 'text' }),
+        defineField({ name: 'en', title: 'English', type: 'text' }),
+      ],
+    }),
+    defineField({
       name: 'sortOrder',
       title: 'Sort Order',
       type: 'number',
