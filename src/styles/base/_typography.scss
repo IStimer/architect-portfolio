@@ -1,10 +1,47 @@
-/* Add your @font-face declarations here */
-/* Example:
 @font-face {
-  font-family: 'YourFont';
-  src: url('/fonts/your-font.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-Ultralight.otf") format("opentype");
+    font-weight: 200;
+    font-style: normal;
+    font-display: swap;
 }
-*/
+
+@font-face {
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-UltralightItalic.otf") format("opentype");
+    font-weight: 200;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-Regular.otf") format("opentype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-Italic.otf") format("opentype");
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-Ultrabold.otf") format("opentype");
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "PP Editorial New";
+    src: url("/fonts/PPEditorialNew-UltraboldItalic.otf") format("opentype");
+    font-weight: 800;
+    font-style: italic;
+    font-display: swap;
+}
