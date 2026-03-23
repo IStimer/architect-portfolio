@@ -167,9 +167,8 @@ export const useSliderMode = ({
     totalHeightRef.current = N * slideH;
 
     // ── Center X ──
-    const minimapW = (80 / window.innerWidth) * viewport.width;
     const panelW = viewport.width * 0.25;
-    const centerX = (-viewport.width / 2 + minimapW + viewport.width / 2 - panelW) / 2;
+    const centerX = -panelW / 2;
 
     // ── Create render target + scene ──
     const rt = new RenderTarget(gl, { width: canvasEl.width, height: canvasEl.height });

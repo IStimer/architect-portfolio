@@ -135,9 +135,8 @@ export const useFilterDezoom = ({
     const meshH = SLIDE_H_FRAC * vp5H;
     const slideH = meshH + SLIDE_SPACING * vp5H;
 
-    const minimapW = (80 / window.innerWidth) * vp5W;
     const panelW = vp5W * 0.25;
-    const centerX = (-vp5W / 2 + minimapW + vp5W / 2 - panelW) / 2;
+    const centerX = -panelW / 2;
 
     const virtualCenter = sliderScroll / slideH;
     const centerIdx = Math.round(virtualCenter);

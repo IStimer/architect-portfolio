@@ -56,11 +56,6 @@ const Home = () => {
     setViewMode('slider');
   }, []);
 
-  const handleReplayOpening = useCallback(() => {
-    setViewMode('opening');
-    setOpeningActive(true);
-  }, []);
-
   // Stop Lenis on mount, start on unmount
   useEffect(() => {
     lenisService.stop();
@@ -185,12 +180,6 @@ const Home = () => {
 
             <ModeToggle viewMode={viewMode} onToggle={handleToggleMode} />
           </>
-        )}
-
-        {viewMode === 'slider' && !openingActive && (
-          <button className="home-page__replay-btn" onClick={handleReplayOpening}>
-            Replay
-          </button>
         )}
 
         <footer className="home-page__footer">

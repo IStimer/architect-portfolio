@@ -23,23 +23,6 @@
   }
 }
 
-.home-page__replay-btn {
-  position: fixed;
-  top: 24px;
-  left: 24px;
-  z-index: 100;
-  background: red;
-  border: 2px solid #fff;
-  color: #fff;
-  font-family: var(--font-secondary);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 12px 24px;
-  cursor: pointer;
-  opacity: 1;
-}
-
 .home-page__footer-link {
   background: transparent;
   border: none;
