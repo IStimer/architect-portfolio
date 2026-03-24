@@ -16,8 +16,7 @@ import fragmentShader from '../shaders/slider/fragment.glsl';
 
 // ── Constants ─────────────────────────────────────────────────────
 
-const SLIDE_W_FRAC = 0.35;
-const SLIDE_H_FRAC = 0.50;
+const SLIDE_SIZE_FRAC = 0.35;
 const SLIDE_SPACING = 0.04;
 const WINDOW_SIZE = 9;
 
@@ -131,8 +130,8 @@ export const useFilterDezoom = ({
     const halfTan = Math.tan(fovRad / 2);
     const vp5H = 2 * halfTan * 5;
     const vp5W = vp5H * (window.innerWidth / window.innerHeight);
-    const meshW = SLIDE_W_FRAC * vp5W;
-    const meshH = SLIDE_H_FRAC * vp5H;
+    const meshW = SLIDE_SIZE_FRAC * vp5H;
+    const meshH = SLIDE_SIZE_FRAC * vp5H;
     const slideH = meshH + SLIDE_SPACING * vp5H;
 
     const panelW = vp5W * 0.25;

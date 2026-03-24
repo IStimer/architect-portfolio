@@ -25,8 +25,7 @@ const NUM_COLS = 5;
 const CENTER_COL = 2;
 const WINDOW_SIZE = 9;
 
-const SLIDE_W_FRAC = 0.35;
-const SLIDE_H_FRAC = 0.5;
+const SLIDE_SIZE_FRAC = 0.35;
 const SLIDE_SPACING = 0.04;
 const COL_SPACING_FRAC = 0.04;
 
@@ -124,8 +123,8 @@ export const useOpeningAnimation = ({
     const halfTan = Math.tan(fovRad / 2);
     const vp5H = 2 * halfTan * 5;
     const vp5W = vp5H * (window.innerWidth / window.innerHeight);
-    const meshW = SLIDE_W_FRAC * vp5W;
-    const meshH = SLIDE_H_FRAC * vp5H;
+    const meshW = SLIDE_SIZE_FRAC * vp5H;
+    const meshH = SLIDE_SIZE_FRAC * vp5H;
     const colGap = COL_SPACING_FRAC * vp5W;
     const slideH = meshH + SLIDE_SPACING * vp5H;
 

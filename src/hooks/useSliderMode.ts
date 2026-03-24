@@ -52,8 +52,7 @@ export interface SliderModeHandle {
 // ── Constants ─────────────────────────────────────────────────────
 
 const WINDOW_SIZE = 9;           // current ± 4 = 9 physical meshes
-const SLIDE_W_FRAC = 0.35;      // slide width  = 35% viewport
-const SLIDE_H_FRAC = 0.50;      // slide height = 50% viewport
+const SLIDE_SIZE_FRAC = 0.35;    // slide = 35% viewport height (square, based on height)
 const SLIDE_SPACING = 0.04;     // 4% viewport height between slides
 const SCROLL_LERP = 0.1;
 const VELOCITY_MULTIPLIER = 8.0;
@@ -185,8 +184,8 @@ export const useSliderMode = ({
     if (N === 0) return;
 
     // ── Dimensions ──
-    const w = SLIDE_W_FRAC * viewport.width;
-    const h = SLIDE_H_FRAC * viewport.height;
+    const w = SLIDE_SIZE_FRAC * viewport.height;
+    const h = SLIDE_SIZE_FRAC * viewport.height;
     const spacing = SLIDE_SPACING * viewport.height;
     const slideH = h + spacing;
     slideHeightRef.current = slideH;
@@ -274,8 +273,8 @@ export const useSliderMode = ({
         (collapsingRef.current && slot.projectIndex === collapseProjectIndexRef.current) ||
         (revealingRef.current && slot.projectIndex === revealedIndexRef.current);
       if (isAnimating) {
-        const nomW = SLIDE_W_FRAC * viewport.width;
-        const nomH = SLIDE_H_FRAC * viewport.height;
+        const nomW = SLIDE_SIZE_FRAC * viewport.height;
+        const nomH = SLIDE_SIZE_FRAC * viewport.height;
         slot.mesh.scale.set(nomW, nomH, 1);
         slot.program.uniforms.uMeshSize.value = [nomW, nomH];
         slot.width = nomW;
@@ -415,8 +414,8 @@ export const useSliderMode = ({
       // Both find their project by index each frame, so they follow
       // projects across slot recycling. They run independently.
       if (revealingRef.current || collapsingRef.current) {
-        const nomW = SLIDE_W_FRAC * curCtx.viewport.width;
-        const nomH = SLIDE_H_FRAC * curCtx.viewport.height;
+        const nomW = SLIDE_SIZE_FRAC * curCtx.viewport.height;
+        const nomH = SLIDE_SIZE_FRAC * curCtx.viewport.height;
         const now = performance.now();
 
         if (revealingRef.current) {
@@ -466,6 +465,22 @@ export const useSliderMode = ({
         }
       }
 
+      // ── Push neighbors apart when a slide is expanded ──
+      const nomH = SLIDE_SIZE_FRAC * curCtx.viewport.height;
+      for (let i = 0; i < actualCount; i++) {
+        const extra = (slides[i].mesh.scale.y as number) - nomH;
+        if (extra < 0.01) continue;
+        const expandY = slides[i].mesh.position.y as number;
+        for (let j = 0; j < actualCount; j++) {
+          if (j === i) continue;
+          if ((slides[j].mesh.position.y as number) > expandY) {
+            slides[j].mesh.position.y += extra / 2;
+          } else {
+            slides[j].mesh.position.y -= extra / 2;
+          }
+        }
+      }
+
       // Post-FX distortion
       if (postfxMeshRef.current) {
         const prog = postfxMeshRef.current.program;
@@ -506,13 +521,15 @@ export const useSliderMode = ({
       const imgW = res[0], imgH = res[1];
       if (imgW === 0 || imgH === 0) return null;
       const imgAspect = imgW / imgH;
-      const curH = SLIDE_H_FRAC * viewport.height;
-      let targetW = curH * imgAspect;
-      let targetH = curH;
+
+      // Fit the full image within viewport bounds (70% width, 80% height)
       const maxW = viewport.width * 0.70;
-      if (targetW > maxW) {
-        targetW = maxW;
-        targetH = targetW / imgAspect;
+      const maxH = viewport.height * 0.80;
+      let targetW = maxW;
+      let targetH = targetW / imgAspect;
+      if (targetH > maxH) {
+        targetH = maxH;
+        targetW = targetH * imgAspect;
       }
       return { w: targetW, h: targetH };
     }
@@ -557,8 +574,8 @@ export const useSliderMode = ({
       revealedIndexRef.current = -1;
 
       if (instant) {
-        const nomW = SLIDE_W_FRAC * viewport.width;
-        const nomH = SLIDE_H_FRAC * viewport.height;
+        const nomW = SLIDE_SIZE_FRAC * viewport.height;
+        const nomH = SLIDE_SIZE_FRAC * viewport.height;
         slide.mesh.scale.set(nomW, nomH, 1);
         slide.program.uniforms.uMeshSize.value = [nomW, nomH];
         slide.width = nomW;
@@ -680,6 +697,7 @@ export const useSliderMode = ({
       } else if (revealedRef.current) {
         switchToSlide(hitSlide.projectIndex);
       } else if (hitSlide.projectIndex === activeIndexRef.current) {
+        jumpTo(hitSlide.projectIndex);
         revealSlide(hitSlide.projectIndex);
       } else {
         jumpAndReveal(hitSlide.projectIndex);
@@ -770,8 +788,8 @@ export const useSliderMode = ({
       collapsePromiseRef.current = null;
       collapseResolveRef.current = null;
 
-      const w = SLIDE_W_FRAC * viewport.width;
-      const h = SLIDE_H_FRAC * viewport.height;
+      const w = SLIDE_SIZE_FRAC * viewport.height;
+      const h = SLIDE_SIZE_FRAC * viewport.height;
       const spacing = SLIDE_SPACING * viewport.height;
       slideHeightRef.current = h + spacing;
       totalHeightRef.current = projects.length * slideHeightRef.current;
