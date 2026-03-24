@@ -8,16 +8,18 @@
     position: relative;
 }
 
+// ── Hero (60vh) ────────────────────────────────────────────
 .project-hero {
     position: relative;
     width: 100%;
-    min-height: 100vh;
+    height: clamp(300px, 60vh, 800px);
     display: flex;
     flex-direction: column;
     padding: var(--spacer-md) var(--spacer-s);
     box-sizing: border-box;
-    background-color: #ffffff;
-    color: #0d100f;
+    background-color: #1a1a1a;
+    color: #ffffff;
+    overflow: hidden;
 
     @media (min-width: 1200px) {
         padding: var(--spacer-md);
@@ -30,13 +32,8 @@
         width: 100%;
         height: 100%;
         z-index: 0;
-        background-color: #ffffff;
-
-        @media (min-width: 769px) {
-            background-attachment: fixed;
-            background-size: cover;
-            background-position: center;
-        }
+        background-size: cover;
+        background-position: center;
     }
 
     &__header {
@@ -64,51 +61,13 @@
         @include text-xs;
     }
 
-    // Main layout - 2 columns (desktop)
-    &__main {
+    &__center {
         position: relative;
         z-index: 1;
         flex: 1;
         display: flex;
-        gap: 10%;
-    }
-
-    // Mobile simplified layout
-    &__bottom {
-        position: relative;
-        z-index: 1;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
         align-items: center;
-        justify-content: flex-end;
-        padding-bottom: calc(
-            var(--spacer-m) + env(safe-area-inset-bottom, 0px)
-        );
-        text-align: center;
-        gap: var(--spacer-xs);
-    }
-
-    &__left {
-        flex: 0 0 50%;
-        position: sticky;
-        bottom: var(--spacer-md);
-        align-self: flex-end;
-    }
-
-    &__right {
-        flex: 0 0 40%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        padding-bottom: var(--spacer-2xs);
-        padding-top: var(--spacer-md);
-        gap: clamp(32px, 8vh, 128px);
-    }
-
-    &__title-wrapper {
-        position: relative;
-        overflow: hidden;
+        justify-content: center;
     }
 
     &__title {
@@ -116,15 +75,14 @@
         font-weight: 700;
         line-height: 0.85;
         margin: 0;
+        text-align: center;
         @include text-6xxl;
+        visibility: hidden;
 
         &--fit {
             display: flex;
             flex-direction: column;
             align-items: center;
-            @media (min-width: 769px) {
-                align-items: flex-start;
-            }
         }
     }
 
@@ -135,38 +93,69 @@
         white-space: nowrap;
 
         @media (min-width: 769px) {
-            font-size: min(calc(46vw / var(--char-count) * 2.2), 8vw);
+            font-size: min(calc(70vw / var(--char-count) * 2.2), 12vw);
         }
     }
 
-    &__meta-row {
+    &--has-image {
+        .project-hero__background::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, transparent 40%),
+                linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 50%);
+        }
+    }
+}
+
+// ── Project Meta (below hero) ──────────────────────────────
+.project-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacer-md);
+    padding: var(--spacer-l) var(--spacer-s);
+    max-width: 1200px;
+    margin: 0 auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    @media (min-width: 769px) {
+        flex-direction: row;
+        gap: var(--spacer-l);
+        padding: var(--spacer-l) var(--spacer-md);
+    }
+
+    &__left {
+        flex: 1;
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacer-sm);
+        flex-direction: column;
+        gap: var(--spacer-s);
     }
 
-    &__year {
-        font-family: var(--font-secondary);
-        min-height: clamp(12px, 1vw, 16px);
-        @include text-xs;
+    &__right {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacer-md);
+
+        @media (min-width: 769px) {
+            flex: 0 0 340px;
+        }
     }
 
-    // Right column elements
     &__subtitle {
         font-family: var(--font-primary);
         line-height: 1.1;
         margin: 0;
         font-weight: 400;
-        overflow: hidden;
         @include text-3xl;
     }
 
     &__description {
         line-height: 1.6;
         margin: 0;
-        min-height: clamp(67px, 6vw, 86px);
         @include text-xs;
+        color: rgba(255, 255, 255, 0.7);
     }
 
     &__info-block {
@@ -183,194 +172,11 @@
 
     &__info-label {
         min-width: 80px;
+        color: rgba(255, 255, 255, 0.5);
     }
 
     &__info-value {
-        // Reserve space: text-xs = 1vw, 1 line
-        min-height: clamp(12px, 1vw, 16px);
         line-height: 1.2;
-    }
-
-    &__links {
-        display: flex;
-        gap: var(--spacer-sm);
-    }
-
-    &__link {
-        display: inline-flex;
-        align-items: center;
-        gap: 0;
-        border: none;
-        padding: var(--spacer-xs) var(--spacer-xs);
-        text-decoration: none;
-        color: inherit;
-
-        @include text-xs;
-    }
-
-    &__link-dot {
-        width: 8px;
-        height: 8px;
-        margin-right: 8px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        animation: pulse 2s ease-in-out infinite;
-    }
-
-    &__link-arrow {
-        display: inline-block;
-        width: 0.75em;
-        height: 0.75em;
-        margin-left: 5px;
-        vertical-align: middle;
-        position: relative;
-        top: -0.5px;
-    }
-
-    &__metric {
-        display: flex;
-        align-items: baseline;
-        gap: var(--spacer-xs);
-    }
-
-    &__metric-label {
-        @include text-xs;
-    }
-
-    // Scroll indicator
-    &__scroll-indicator {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: inherit;
-        padding: var(--spacer-s) var(--spacer-xs);
-        margin: calc(var(--spacer-s) * -1) calc(var(--spacer-xs) * -1);
-        gap: var(--spacer-s);
-        transition: opacity 0.3s;
-
-        @media (min-width: 769px) {
-            flex-direction: row;
-            justify-content: space-between;
-            margin-top: auto;
-            margin-bottom: 10px;
-            width: calc(100% + var(--spacer-xs) * 2);
-        }
-    }
-
-    &__scroll-text {
-        min-height: clamp(10px, 0.8vw, 14px);
-        @include text-xs;
-    }
-
-    &__scroll-arrow {
-        width: auto;
-        height: 1.4em;
-        @include text-sm;
-    }
-
-    // Initial hidden states — CSS hides elements before GSAP takes over,
-    // preventing flash during View Transition snapshot
-    .scramble-text {
-        visibility: hidden;
-    }
-
-    &__link {
-        opacity: 0;
-    }
-
-    &__scroll-arrow {
-        opacity: 0;
-    }
-
-    &__title {
-        visibility: hidden;
-    }
-
-    &__subtitle {
-        visibility: hidden;
-    }
-
-    &--has-image {
-        color: #ffffff;
-
-        .project-hero__background::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background:
-                linear-gradient(
-                    to bottom,
-                    rgba(0, 0, 0, 0.6) 0%,
-                    transparent 30%
-                ),
-                linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 45%);
-
-            @media (min-width: 769px) {
-                background:
-                    linear-gradient(
-                        to right,
-                        transparent 40%,
-                        rgba(0, 0, 0, 0.7) 85%
-                    ),
-                    linear-gradient(
-                        to top,
-                        rgba(0, 0, 0, 0.8) 0%,
-                        transparent 50%
-                    );
-            }
-        }
-    }
-}
-
-@keyframes pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.5;
-    }
-}
-
-.project-info {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: var(--spacer-l) var(--spacer-s);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacer-md);
-    color: #ffffff;
-
-    &__subtitle {
-        font-family: var(--font-primary);
-        line-height: 1.1;
-        margin: 0;
-        font-weight: 400;
-        overflow: hidden;
-        @include text-5xl;
-    }
-
-    &__description {
-        line-height: 1.6;
-        margin: 0;
-        overflow: hidden;
-        @include text-xs;
-    }
-
-    &__meta-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacer-sm);
-    }
-
-    &__year {
-        font-family: var(--font-secondary);
-        @include text-xs;
     }
 
     &__links {
@@ -387,15 +193,17 @@
         text-decoration: none;
         color: inherit;
         @include text-xs;
-    }
 
-    &__link-dot {
-        width: 8px;
-        height: 8px;
-        margin-right: 8px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        animation: pulse 2s ease-in-out infinite;
+        &--live {
+            .project-meta__link-dot {
+                width: 8px;
+                height: 8px;
+                margin-right: 8px;
+                background-color: #22c55e;
+                border-radius: 50%;
+                animation: pulse 2s ease-in-out infinite;
+            }
+        }
     }
 
     &__link-arrow {
@@ -407,45 +215,21 @@
         position: relative;
         top: -0.5px;
     }
-
-    &__info-block {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacer-xs);
-    }
-
-    &__info-item {
-        display: flex;
-        gap: var(--spacer-sm);
-        @include text-xs;
-    }
-
-    &__info-label {
-        min-width: 80px;
-    }
-
-    &__info-value {
-        line-height: 1.2;
-    }
-
-    &__metric {
-        display: flex;
-        align-items: baseline;
-        gap: var(--spacer-xs);
-    }
-
-    &__metric-label {
-        @include text-xs;
-    }
 }
 
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+// ── Content area ───────────────────────────────────────────
 .project-content {
     position: relative;
     background: #0d100f;
     padding: 0 var(--spacer-s);
 
     @media (min-width: 768px) {
-        padding: var(--spacer-xxl) var(--spacer-s);
+        padding: var(--spacer-l) var(--spacer-s);
     }
 
     &__wrapper {
@@ -455,6 +239,7 @@
     }
 }
 
+// ── Legacy gallery (fallback) ──────────────────────────────
 .project-gallery {
     display: flex;
     flex-direction: column;
@@ -474,129 +259,78 @@
     }
 }
 
+// ── Next project (40vh) ────────────────────────────────────
 .project-next {
     position: relative;
-    z-index: 101;
     width: 100%;
-    height: 150vh;
+    height: clamp(250px, 40vh, 500px);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
-
-    &__container {
-        position: sticky;
-        top: 0;
-        width: 100%;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-    }
-
-    &__image {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transform-origin: center center;
-        will-change: transform;
-    }
+    overflow: hidden;
+    color: #0d100f;
+    background-color: #ffffff;
+    cursor: pointer;
+    transition: transform 0.3s ease;
 
     &__background {
         position: absolute;
-        width: 100%;
-        height: 100%;
-        transform-origin: center center;
-        will-change: transform;
-        background-color: #ffffff;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
     }
 
     &__content {
         position: relative;
         z-index: 2;
         text-align: center;
-        color: #0d100f;
-        pointer-events: auto;
-        padding: var(--spacer-md) var(--spacer-l);
-        cursor: pointer;
-
-        &::before {
-            content: "";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 150%;
-            height: 150%;
-            z-index: -1;
-        }
-    }
-
-    &__progress {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-bottom: 32px;
-    }
-
-    &__progress-circle {
-        display: block;
-    }
-
-    &__progress-number {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-weight: bold;
-        @include text-base;
+        padding: var(--spacer-md);
     }
 
     &__label {
         display: block;
-        margin-bottom: 16px;
+        margin-bottom: var(--spacer-xs);
         @include text-xs;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
     }
 
     &__title {
-        font-weight: bold;
+        font-family: var(--font-primary);
+        font-weight: 700;
         margin: 0;
         line-height: 1;
-        @include text-7xl;
+        @include text-5xl;
+    }
+
+    &__arrow {
+        width: 24px;
+        height: 24px;
+        margin-top: var(--spacer-s);
+        transition: transform 0.3s ease;
+    }
+
+    &:hover &__arrow {
+        transform: translateX(8px);
     }
 
     &--has-image {
+        color: #ffffff;
+
         .project-next__background::after {
             content: "";
             position: absolute;
             inset: 0;
-            background: radial-gradient(
-                ellipse 60% 60% at center,
-                rgba(0, 0, 0, 0.75) 0%,
-                transparent 100%
+            background: linear-gradient(
+                to top,
+                rgba(0, 0, 0, 0.7) 0%,
+                rgba(0, 0, 0, 0.3) 100%
             );
         }
-
-        .project-next__content {
-            color: #ffffff;
-        }
     }
 }
 
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
+// ── Progress indicator ─────────────────────────────────────
 .progress-indicator {
     position: fixed;
     left: 0;
@@ -613,6 +347,7 @@
     will-change: transform;
 }
 
+// ── Minimap ────────────────────────────────────────────────
 .minimap-container {
     display: none;
 
@@ -657,12 +392,18 @@
         }
     }
 
-    // Cloned HTML has no React state — show full images, hide LQIP placeholders
-    .progressive-image__lqip {
+    .editorial-block {
+        opacity: 1;
+        transform: none;
+    }
+
+    .progressive-image__lqip,
+    .editorial-block__lqip {
         display: none;
     }
 
-    .progressive-image__full {
+    .progressive-image__full,
+    .editorial-block__img {
         opacity: 1;
         filter: none;
         transform: none;
@@ -684,48 +425,4 @@
     inset: 0;
     cursor: pointer;
     z-index: 6;
-}
-
-.project-next-mobile {
-    background: #1a1a1a;
-    color: #ffffff;
-    padding: var(--spacer-l) var(--spacer-s);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-
-    &__label {
-        @include text-xs;
-    }
-
-    &__title {
-        font-family: var(--font-primary);
-        font-weight: 700;
-        line-height: 1;
-        margin: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: var(--spacer-s);
-    }
-
-    &__title-word {
-        display: block;
-        font-size: calc(88vw / var(--char-count) * 2);
-        line-height: 0.9;
-        white-space: nowrap;
-    }
-
-    &__button {
-        position: relative;
-        margin-top: var(--spacer-sm);
-        background: transparent;
-        border: none;
-        color: #ffffff;
-        padding: var(--spacer-xs) var(--spacer-md);
-        cursor: pointer;
-        @include text-xs;
-        @include corner-brackets(8px, 1px, #fff, -4px, -1px);
-    }
 }

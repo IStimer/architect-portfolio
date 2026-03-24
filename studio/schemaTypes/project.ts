@@ -112,20 +112,33 @@ export const project = defineType({
       ],
     }),
 
+    // ── Editorial ──────────────────────────────────────────────
+    defineField({
+      name: 'editorialContent',
+      title: 'Editorial Content',
+      type: 'array',
+      group: 'content',
+      of: [
+        defineArrayMember({ type: 'editorialBlock' }),
+        defineArrayMember({ type: 'textBlock' }),
+      ],
+    }),
+
     // ── Media ───────────────────────────────────────────────────
     defineField({
       name: 'heroImage',
       title: 'Hero Image',
       type: 'image',
       group: 'media',
+      description: 'Preview image used on homepage listings and project hero banner.',
       options: { hotspot: true },
-      validation: (rule) => rule.required(),
     }),
     defineField({
       name: 'galleryImages',
-      title: 'Gallery Images',
+      title: 'Gallery Images (Legacy)',
       type: 'array',
       group: 'media',
+      description: 'Deprecated — use Editorial Content instead. Kept for backward compatibility.',
       of: [defineArrayMember({ type: 'image', options: { hotspot: true } })],
     }),
 

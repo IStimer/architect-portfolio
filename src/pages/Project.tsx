@@ -1,20 +1,20 @@
 import { useParams } from 'react-router-dom';
-import { useMemo, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedNavigate } from '../hooks/useLocalizedNavigate';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { useMinimap } from '../hooks/useMinimap';
 import useMatchMedia from '../hooks/useMatchMedia';
-import { useNextProjectAnimation } from '../hooks/useNextProjectAnimation';
 import { useProjects } from '../hooks/useProjects';
+import { fetchProjectDetail } from '../services/projectService';
 import { localizedPath } from '../i18n/routes';
+import type { ProjectData } from '../types';
 import {
   ProjectHero,
-  ProjectGallery,
+  ProjectMeta,
+  ProjectEditorial,
   ProjectMinimap,
   ProjectNextSection,
-  ProjectNextMobile,
-  ProjectInfo
 } from '../components/project';
 import SEO from '../components/SEO';
 import '../styles/pages/Project.scss';
@@ -28,13 +28,28 @@ const Project = () => {
   const showMinimap = useMatchMedia('(min-width: 1200px)');
   const scrollProgressRef = useScrollProgress(!isMobile);
 
-  const project = useMemo(() => projects.find(p => p.slug === slug) ?? null, [slug, projects]);
+  const listProject = useMemo(() => projects.find(p => p.slug === slug) ?? null, [slug, projects]);
   const nextProject = useMemo(() => {
-    if (!project || projects.length === 0) return null;
+    if (!listProject || projects.length === 0) return null;
     const currentIndex = projects.findIndex(p => p.slug === slug);
     const nextSlug = projects[(currentIndex + 1) % projects.length].slug;
     return projects.find(p => p.slug === nextSlug) ?? null;
-  }, [slug, projects, project]);
+  }, [slug, projects, listProject]);
+
+  // Fetch detail to get editorialContent (not in list query)
+  const [detailProject, setDetailProject] = useState<ProjectData | null>(null);
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    setDetailProject(null);
+    fetchProjectDetail(slug, currentLang as 'fr' | 'en').then((detail) => {
+      if (!cancelled && detail) setDetailProject(detail);
+    });
+    return () => { cancelled = true; };
+  }, [slug, currentLang]);
+
+  // Merge: use detail data when available, fallback to list data
+  const project = detailProject ?? listProject;
 
   const {
     contentRef,
@@ -49,32 +64,6 @@ const Project = () => {
     navigateTo('project', { slug: nextSlug });
   }, [navigateTo]);
 
-  const {
-    nextProjectRef,
-    nextProjectBgRef,
-    progressCircleRef,
-    progressNumberRef,
-    handleClickNavigate
-  } = useNextProjectAnimation({
-    nextProject,
-    currentSlug: slug,
-    onNavigateToProject: handleNavigateToProject,
-    isMobile
-  });
-
-  // Preload next project gallery when visible
-  useEffect(() => {
-    if (!nextProject || !nextProjectRef.current) return;
-    const el = nextProjectRef.current;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        observer.disconnect();
-      }
-    }, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [nextProject]);
-
   if (!project) {
     return <div>{t('common:errors.projectNotFound')}</div>;
   }
@@ -85,7 +74,7 @@ const Project = () => {
         title={project.title}
         description={t('project:seo.descriptionTemplate', { description: project.description, client: project.client, stack: project.stack.join(', ') })}
         path={localizedPath(currentLang, 'project', { slug: project.slug })}
-        image={project.galleryImages[0]}
+        image={project.heroImage || project.galleryImages[0]}
         type="article"
       />
       {!isMobile && (
@@ -103,6 +92,8 @@ const Project = () => {
         onBack={() => navigateTo('home')}
       />
 
+      <ProjectMeta project={project} />
+
       <div className="project-content">
         {showMinimap && (
           <ProjectMinimap
@@ -114,27 +105,17 @@ const Project = () => {
           />
         )}
 
-        {isMobile && <ProjectInfo project={project} />}
-
-        <ProjectGallery
+        <ProjectEditorial
           ref={contentRef}
           project={project}
         />
       </div>
 
       {nextProject && (
-        isMobile ? (
-          <ProjectNextMobile nextProject={nextProject} onNavigate={handleNavigateToProject} />
-        ) : (
-          <ProjectNextSection
-            ref={nextProjectRef}
-            nextProject={nextProject}
-            nextProjectBgRef={nextProjectBgRef}
-            progressCircleRef={progressCircleRef}
-            progressNumberRef={progressNumberRef}
-            onClickNavigate={handleClickNavigate}
-          />
-        )
+        <ProjectNextSection
+          nextProject={nextProject}
+          onNavigate={handleNavigateToProject}
+        />
       )}
     </main>
   );

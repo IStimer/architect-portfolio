@@ -1,79 +1,42 @@
-import { forwardRef, RefObject, KeyboardEvent } from 'react';
+import { KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProjectData } from '../../types';
 import { useProgressiveBackground } from '../../hooks/useProgressiveBackground';
 
 interface ProjectNextSectionProps {
   nextProject: ProjectData;
-  nextProjectBgRef: RefObject<HTMLDivElement>;
-  progressCircleRef: RefObject<SVGCircleElement>;
-  progressNumberRef: RefObject<HTMLSpanElement>;
-  onClickNavigate: () => void;
+  onNavigate: (slug: string) => void;
 }
 
-const CIRCUMFERENCE = 2 * Math.PI * 40;
+export const ProjectNextSection = ({ nextProject, onNavigate }: ProjectNextSectionProps) => {
+  const { t } = useTranslation('common');
+  const { style: bgStyle } = useProgressiveBackground(nextProject.heroImage);
 
-export const ProjectNextSection = forwardRef<HTMLDivElement, ProjectNextSectionProps>(
-  ({ nextProject, nextProjectBgRef, progressCircleRef, progressNumberRef, onClickNavigate }, ref) => {
-    const { t } = useTranslation('common');
-    const { style: footerBgStyle } = useProgressiveBackground(nextProject.footerImage);
+  const handleClick = () => onNavigate(nextProject.slug);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onClickNavigate();
-      }
-    };
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
 
-    return (
-      <div className={`project-next${nextProject.footerImage ? ' project-next--has-image' : ''}`} ref={ref}>
-        <div className="project-next__container">
-          <div
-            ref={nextProjectBgRef}
-            className="project-next__background"
-            style={footerBgStyle}
-          />
-          <div
-            className="project-next__content"
-            role="button"
-            tabIndex={0}
-            onClick={onClickNavigate}
-            onKeyDown={handleKeyDown}
-          >
-            <div className="project-next__progress">
-              <svg width="100" height="100" className="project-next__progress-circle">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeOpacity={0.3}
-                  strokeWidth="2"
-                />
-                <circle
-                  ref={progressCircleRef}
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeDasharray={CIRCUMFERENCE}
-                  strokeDashoffset={CIRCUMFERENCE}
-                  strokeLinecap="round"
-                  transform="rotate(-90 50 50)"
-                />
-              </svg>
-              <span ref={progressNumberRef} className="project-next__progress-number">0</span>
-            </div>
-            <span className="project-next__label">{t('labels.nextProject')}</span>
-            <h2 className="project-next__title">{nextProject.title}</h2>
-          </div>
-        </div>
+  return (
+    <div className={`project-next${nextProject.heroImage ? ' project-next--has-image' : ''}`}>
+      <div className="project-next__background" style={bgStyle} />
+      <div
+        className="project-next__content"
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="project-next__label">{t('labels.nextProject')}</span>
+        <h2 className="project-next__title">{nextProject.title}</h2>
+        <svg className="project-next__arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </div>
-    );
-  }
-);
-
-ProjectNextSection.displayName = 'ProjectNextSection';
+    </div>
+  );
+};

@@ -1,5 +1,5 @@
 import { sanityClient, urlFor } from './sanityClient';
-import type { ProjectData } from '../types/project';
+import type { ProjectData, ContentBlock, EditorialBlockData, TextBlockData, ImageWidth } from '../types/project';
 
 // ── GROQ Fragments ──────────────────────────────────────────────
 
@@ -30,7 +30,19 @@ const projectListFields = /* groq */ `
 
 const projectDetailFields = /* groq */ `
   ${projectListFields},
-  galleryImages[] { ${imageFields} }
+  galleryImages[] { ${imageFields} },
+  editorialContent[] {
+    _key,
+    _type,
+    image { ${imageFields} },
+    imageWidth,
+    text,
+    textPosition,
+    spacing,
+    style,
+    alignment,
+    maxWidth
+  }
 `;
 
 // ── Queries ─────────────────────────────────────────────────────
@@ -68,6 +80,27 @@ interface SanityImage {
   };
 }
 
+interface SanityEditorialBlock {
+  _key: string;
+  _type: 'editorialBlock';
+  image: SanityImage;
+  imageWidth?: string;
+  text?: { fr: string; en: string };
+  textPosition?: string;
+  spacing?: string;
+}
+
+interface SanityTextBlock {
+  _key: string;
+  _type: 'textBlock';
+  text: { fr: string; en: string };
+  style?: string;
+  alignment?: string;
+  maxWidth?: string;
+}
+
+type SanityContentBlock = SanityEditorialBlock | SanityTextBlock;
+
 interface SanityProject {
   _id: string;
   title: string;
@@ -76,6 +109,7 @@ interface SanityProject {
   description?: { fr: string; en: string };
   heroImage: SanityImage;
   galleryImages?: SanityImage[];
+  editorialContent?: SanityContentBlock[];
   category?: { _id: string; title: { fr: string; en: string }; slug: string };
   year?: number;
   client?: string;
@@ -106,6 +140,47 @@ function buildImageUrl(image: SanityImage, width: number): string {
   return urlFor(image).width(width).format('webp').quality(80).url();
 }
 
+const IMAGE_WIDTH_MAP: Record<ImageWidth, number> = {
+  full: 2400,
+  large: 1800,
+  half: 1200,
+  third: 800,
+};
+
+function mapEditorialContent(
+  blocks: SanityContentBlock[] | undefined,
+  lang: 'fr' | 'en'
+): ContentBlock[] | undefined {
+  if (!blocks?.length) return undefined;
+
+  return blocks.map((block): ContentBlock => {
+    if (block._type === 'textBlock') {
+      const tb = block as SanityTextBlock;
+      return {
+        _key: tb._key,
+        _type: 'textBlock',
+        text: tb.text?.[lang] ?? tb.text?.fr ?? '',
+        style: (tb.style as TextBlockData['style']) ?? 'paragraph',
+        alignment: (tb.alignment as TextBlockData['alignment']) ?? 'left',
+        maxWidth: (tb.maxWidth as TextBlockData['maxWidth']) ?? 'medium',
+      };
+    }
+
+    const eb = block as SanityEditorialBlock;
+    const imageWidth = (eb.imageWidth as ImageWidth) ?? 'full';
+    return {
+      _key: eb._key,
+      _type: 'editorialBlock',
+      imageUrl: eb.image?.asset ? buildImageUrl(eb.image, IMAGE_WIDTH_MAP[imageWidth]) : '',
+      lqip: eb.image?.asset?.metadata?.lqip,
+      imageWidth,
+      text: eb.text?.[lang] ?? eb.text?.fr ?? undefined,
+      textPosition: (eb.textPosition as EditorialBlockData['textPosition']) ?? 'below',
+      spacing: (eb.spacing as EditorialBlockData['spacing']) ?? 'normal',
+    };
+  });
+}
+
 function mapProject(raw: SanityProject, lang: 'fr' | 'en'): ProjectData {
   const hasImage = raw.heroImage?.asset?.url;
   return {
@@ -119,6 +194,7 @@ function mapProject(raw: SanityProject, lang: 'fr' | 'en'): ProjectData {
     thumbnailUrl: hasImage ? buildImageUrl(raw.heroImage, 600) : undefined,
     lqipBase64: raw.heroImage?.asset?.metadata?.lqip ?? undefined,
     galleryImages: raw.galleryImages?.map((img) => buildImageUrl(img, 1600)) ?? [],
+    editorialContent: mapEditorialContent(raw.editorialContent, lang),
     year: raw.year ?? new Date().getFullYear(),
     client: raw.client ?? '',
     role: raw.role?.[lang] ?? raw.role?.fr ?? '',

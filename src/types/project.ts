@@ -13,6 +13,37 @@ interface ProjectKeyMetric {
   label: string;
 }
 
+// ── Editorial block types ────────────────────────────────────
+
+export type ImageWidth = 'full' | 'large' | 'half' | 'third';
+export type TextPosition = 'below' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'overlay';
+export type BlockSpacing = 'normal' | 'tight' | 'loose';
+export type TextStyle = 'paragraph' | 'quote' | 'heading';
+export type TextAlignment = 'left' | 'center' | 'right';
+export type TextMaxWidth = 'narrow' | 'medium' | 'wide';
+
+export interface EditorialBlockData {
+  _key: string;
+  _type: 'editorialBlock';
+  imageUrl: string;
+  lqip?: string;
+  imageWidth: ImageWidth;
+  text?: string;
+  textPosition: TextPosition;
+  spacing: BlockSpacing;
+}
+
+export interface TextBlockData {
+  _key: string;
+  _type: 'textBlock';
+  text: string;
+  style: TextStyle;
+  alignment: TextAlignment;
+  maxWidth: TextMaxWidth;
+}
+
+export type ContentBlock = EditorialBlockData | TextBlockData;
+
 export interface ProjectData {
   id: number;
   slug: ProjectSlug;
@@ -31,6 +62,7 @@ export interface ProjectData {
   heroImage?: string;
   footerImage?: string;
   category?: string;
+  editorialContent?: ContentBlock[];
   // CMS fields
   heroImageUrl?: string;
   thumbnailUrl?: string;
