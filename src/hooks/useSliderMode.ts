@@ -59,9 +59,12 @@ const SCROLL_LERP = 0.1;
 const VELOCITY_MULTIPLIER = 8.0;
 const VELOCITY_LERP = 0.12;
 const SLIDE_DISTORTION_MULT = 1.5;
-const REVEAL_DURATION = 600;     // ms — expand to full image
-const COLLAPSE_DURATION = 450;   // ms — shrink back to cropped
-const JUMP_REVEAL_DELAY = 150;   // ms — delay before reveal starts during jump
+const REVEAL_DURATION = 0.6;     // s — expand on centered slide (no jump needed)
+const COLLAPSE_DURATION = 0.45;  // s — shrink back to cropped
+const JUMP_DURATION = 0.8;       // s — scroll to center a slide
+
+// Cubic out easing — fast start, smooth landing
+function easeOutCubic(t: number): number { return 1 - Math.pow(1 - t, 3); }
 
 // ── Hook ──────────────────────────────────────────────────────────
 
@@ -109,13 +112,17 @@ export const useSliderMode = ({
   const hoveredRef = useRef<string | null>(null);
   const prevVisibleRef = useRef<string>(''); // joined slug string for fast comparison
 
-  // Reveal state
+  // Reveal state — tick-based so it follows the project across slot recycling
   const revealedRef = useRef(false);
   const revealedIndexRef = useRef(-1);
-  const revealTweenRef = useRef<gsap.core.Tween | null>(null);
+  const revealingRef = useRef(false);
+  const revealStartTimeRef = useRef(0);
+  const revealDurationRef = useRef(REVEAL_DURATION);
+  const revealTargetScaleRef = useRef({ w: 0, h: 0 });
 
-  // Tick-based collapse (follows project across slot recycling)
+  // Tick-based collapse — independent from reveal so both can run simultaneously
   const collapsingRef = useRef(false);
+  const collapseProjectIndexRef = useRef(-1);
   const collapseStartTimeRef = useRef(0);
   const collapseStartScaleRef = useRef({ w: 0, h: 0 });
   const collapseResolveRef = useRef<(() => void) | null>(null);
@@ -150,10 +157,12 @@ export const useSliderMode = ({
       const proxy = { value: current };
       jumpTweenRef.current = gsap.to(proxy, {
         value: finalTarget,
-        duration: 0.8,
+        duration: JUMP_DURATION,
         ease: 'power3.inOut',
         onUpdate: () => { scrollTargetRef.current = proxy.value; },
-        onComplete: () => { jumpTweenRef.current = null; },
+        onComplete: () => {
+          jumpTweenRef.current = null;
+        },
       });
     },
     [getScrollForIndex, projects.length]
@@ -259,17 +268,18 @@ export const useSliderMode = ({
       const pIdx = ((projectIdx % N) + N) % N;
       if (slot.projectIndex === pIdx) return; // already assigned
 
-      // If this slot held the revealed/collapsing slide, reset its scale to
-      // nominal so the NEW project in this slot looks correct. The tick-based
-      // collapse will find the project in its new slot and continue the animation.
-      if (slot.projectIndex === revealedIndexRef.current && (revealedRef.current || collapsingRef.current)) {
+      // If this slot held a collapsing or revealing slide, reset scale so the
+      // new project appears at nominal. The tick will find the project in its new slot.
+      const isAnimating =
+        (collapsingRef.current && slot.projectIndex === collapseProjectIndexRef.current) ||
+        (revealingRef.current && slot.projectIndex === revealedIndexRef.current);
+      if (isAnimating) {
         const nomW = SLIDE_W_FRAC * viewport.width;
         const nomH = SLIDE_H_FRAC * viewport.height;
         slot.mesh.scale.set(nomW, nomH, 1);
         slot.program.uniforms.uMeshSize.value = [nomW, nomH];
         slot.width = nomW;
         slot.height = nomH;
-        // DON'T clear revealedRef/collapsingRef — the tick follows the project
       }
 
       slot.projectIndex = pIdx;
@@ -321,9 +331,13 @@ export const useSliderMode = ({
         if (Math.abs(inertiaVelocityRef.current) < 0.0001) inertiaVelocityRef.current = 0;
       }
 
-      // Lerp scroll
+      // Lerp scroll — during jumpTo the tween handles easing, no lerp lag
       const prevScroll = scrollRef.current;
-      scrollRef.current += (scrollTargetRef.current - scrollRef.current) * SCROLL_LERP;
+      if (jumpTweenRef.current) {
+        scrollRef.current = scrollTargetRef.current;
+      } else {
+        scrollRef.current += (scrollTargetRef.current - scrollRef.current) * SCROLL_LERP;
+      }
       scrollVelocityRef.current = scrollRef.current - prevScroll;
 
       const scroll = scrollRef.current;
@@ -397,34 +411,58 @@ export const useSliderMode = ({
         onIndexChange(closestIndex);
       }
 
-      // ── Tick-based collapse: finds project by index each frame ──
-      // This allows the animation to follow a project across slot recycling.
-      if (collapsingRef.current) {
-        const revSlide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
-        const resolveAndClear = () => {
-          const resolve = collapseResolveRef.current;
-          clearRevealState();
-          resolve?.();
-        };
-        if (revSlide) {
-          const elapsed = performance.now() - collapseStartTimeRef.current;
-          const raw = Math.min(elapsed / COLLAPSE_DURATION, 1);
-          const t = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
-          const nomW = SLIDE_W_FRAC * curCtx.viewport.width;
-          const nomH = SLIDE_H_FRAC * curCtx.viewport.height;
-          const cw = collapseStartScaleRef.current.w + (nomW - collapseStartScaleRef.current.w) * t;
-          const ch = collapseStartScaleRef.current.h + (nomH - collapseStartScaleRef.current.h) * t;
-          revSlide.mesh.scale.set(cw, ch, 1);
-          revSlide.program.uniforms.uMeshSize.value = [cw, ch];
-          if (raw >= 1) {
-            revSlide.mesh.scale.set(nomW, nomH, 1);
-            revSlide.program.uniforms.uMeshSize.value = [nomW, nomH];
-            revSlide.width = nomW;
-            revSlide.height = nomH;
-            resolveAndClear();
+      // ── Tick-based reveal & collapse ──
+      // Both find their project by index each frame, so they follow
+      // projects across slot recycling. They run independently.
+      if (revealingRef.current || collapsingRef.current) {
+        const nomW = SLIDE_W_FRAC * curCtx.viewport.width;
+        const nomH = SLIDE_H_FRAC * curCtx.viewport.height;
+        const now = performance.now();
+
+        if (revealingRef.current) {
+          const revSlide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
+          if (revSlide) {
+            const raw = Math.min((now - revealStartTimeRef.current) / 1000 / revealDurationRef.current, 1);
+            const t = easeOutCubic(raw);
+            const tw = revealTargetScaleRef.current.w;
+            const th = revealTargetScaleRef.current.h;
+            const rw = nomW + (tw - nomW) * t;
+            const rh = nomH + (th - nomH) * t;
+            revSlide.mesh.scale.set(rw, rh, 1);
+            revSlide.program.uniforms.uMeshSize.value = [rw, rh];
+            if (raw >= 1) revealingRef.current = false;
           }
-        } else {
-          resolveAndClear();
+        }
+
+        if (collapsingRef.current) {
+          const colSlide = slides.find((s) => s.projectIndex === collapseProjectIndexRef.current);
+          if (colSlide) {
+            const raw = Math.min((now - collapseStartTimeRef.current) / 1000 / COLLAPSE_DURATION, 1);
+            const t = easeOutCubic(raw);
+            const cw = collapseStartScaleRef.current.w + (nomW - collapseStartScaleRef.current.w) * t;
+            const ch = collapseStartScaleRef.current.h + (nomH - collapseStartScaleRef.current.h) * t;
+            colSlide.mesh.scale.set(cw, ch, 1);
+            colSlide.program.uniforms.uMeshSize.value = [cw, ch];
+            if (raw >= 1) {
+              colSlide.mesh.scale.set(nomW, nomH, 1);
+              colSlide.program.uniforms.uMeshSize.value = [nomW, nomH];
+              colSlide.width = nomW;
+              colSlide.height = nomH;
+              const resolve = collapseResolveRef.current;
+              collapsingRef.current = false;
+              collapseProjectIndexRef.current = -1;
+              collapsePromiseRef.current = null;
+              collapseResolveRef.current = null;
+              resolve?.();
+            }
+          } else {
+            const resolve = collapseResolveRef.current;
+            collapsingRef.current = false;
+            collapseProjectIndexRef.current = -1;
+            collapsePromiseRef.current = null;
+            collapseResolveRef.current = null;
+            resolve?.();
+          }
         }
       }
 
@@ -458,24 +496,16 @@ export const useSliderMode = ({
     postfxMeshRef.current = postfxMesh;
 
     // ── Reveal / Collapse ──
+    // Both are tick-based so they follow projects across slot recycling.
+    // They run independently on different slides.
 
-    function clearRevealState() {
-      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
-      revealedRef.current = false;
-      revealedIndexRef.current = -1;
-      collapsingRef.current = false;
-      collapsePromiseRef.current = null;
-      collapseResolveRef.current = null;
-    }
-
-    function revealSlide(slide: SlideData) {
-      clearRevealState();
-
+    function computeRevealTarget(projectIndex: number) {
+      const slide = slides.find((s) => s.projectIndex === projectIndex);
+      if (!slide) return null;
       const res = slide.program.uniforms.uResolution.value;
       const imgW = res[0], imgH = res[1];
-      if (imgW === 0 || imgH === 0) return;
+      if (imgW === 0 || imgH === 0) return null;
       const imgAspect = imgW / imgH;
-
       const curH = SLIDE_H_FRAC * viewport.height;
       let targetW = curH * imgAspect;
       let targetH = curH;
@@ -484,32 +514,47 @@ export const useSliderMode = ({
         targetW = maxW;
         targetH = targetW / imgAspect;
       }
+      return { w: targetW, h: targetH };
+    }
 
+    function revealSlide(projectIndex: number, duration = REVEAL_DURATION) {
+      const target = computeRevealTarget(projectIndex);
+      if (!target) return;
+
+      revealingRef.current = true;
       revealedRef.current = true;
-      revealedIndexRef.current = slide.projectIndex;
+      revealedIndexRef.current = projectIndex;
+      revealStartTimeRef.current = performance.now();
+      revealDurationRef.current = duration;
+      revealTargetScaleRef.current = target;
+    }
 
-      const proxy = { w: slide.mesh.scale.x as number, h: slide.mesh.scale.y as number };
-      revealTweenRef.current = gsap.to(proxy, {
-        w: targetW,
-        h: targetH,
-        duration: REVEAL_DURATION / 1000,
-        ease: 'power2.inOut',
-        onUpdate: () => {
-          slide.mesh.scale.set(proxy.w, proxy.h, 1);
-          slide.program.uniforms.uMeshSize.value = [proxy.w, proxy.h];
-        },
-        onComplete: () => { revealTweenRef.current = null; },
-      });
+    function startCollapse(slide: SlideData) {
+      collapsingRef.current = true;
+      collapseProjectIndexRef.current = slide.projectIndex;
+      collapseStartTimeRef.current = performance.now();
+      collapseStartScaleRef.current = {
+        w: slide.mesh.scale.x as number,
+        h: slide.mesh.scale.y as number,
+      };
     }
 
     function collapseReveal(instant = false): Promise<void> {
       if (!revealedRef.current) return Promise.resolve();
       if (!instant && collapsingRef.current && collapsePromiseRef.current) return collapsePromiseRef.current;
 
-      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      // Stop any in-progress reveal
+      revealingRef.current = false;
 
       const slide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
-      if (!slide) { clearRevealState(); return Promise.resolve(); }
+      if (!slide) {
+        revealedRef.current = false;
+        revealedIndexRef.current = -1;
+        return Promise.resolve();
+      }
+
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
 
       if (instant) {
         const nomW = SLIDE_W_FRAC * viewport.width;
@@ -518,22 +563,31 @@ export const useSliderMode = ({
         slide.program.uniforms.uMeshSize.value = [nomW, nomH];
         slide.width = nomW;
         slide.height = nomH;
-        clearRevealState();
         return Promise.resolve();
       }
 
-      collapsingRef.current = true;
-      collapseStartTimeRef.current = performance.now();
-      collapseStartScaleRef.current = {
-        w: slide.mesh.scale.x as number,
-        h: slide.mesh.scale.y as number,
-      };
+      startCollapse(slide);
 
       const promise = new Promise<void>((resolve) => {
         collapseResolveRef.current = resolve;
       });
       collapsePromiseRef.current = promise;
       return promise;
+    }
+
+    // Collapse old + jump + reveal new — all start simultaneously
+    function switchToSlide(targetIndex: number) {
+      const oldSlide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
+      revealingRef.current = false;
+      if (oldSlide) startCollapse(oldSlide);
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
+      collapsePromiseRef.current = null;
+      collapseResolveRef.current = null;
+
+      onIndexChange(targetIndex);
+      jumpTo(targetIndex);
+      revealSlide(targetIndex, JUMP_DURATION);
     }
 
     // ── Wheel ──
@@ -598,14 +652,10 @@ export const useSliderMode = ({
       if (foundSlug !== hoveredRef.current) hoveredRef.current = foundSlug;
     };
 
-    // Wait for any in-flight collapse, then jump to a new index and reveal it
     function jumpAndReveal(targetIndex: number) {
       onIndexChange(targetIndex);
       jumpTo(targetIndex);
-      gsap.delayedCall(0.85, () => {
-        const targetSlide = slides.find((s) => s.projectIndex === targetIndex);
-        if (targetSlide) revealSlide(targetSlide);
-      });
+      revealSlide(targetIndex, JUMP_DURATION);
     }
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -625,44 +675,21 @@ export const useSliderMode = ({
       const hitSlide = slides.find((s) => s.mesh === hits[0]);
       if (!hitSlide) return;
 
-      const isCollapsing = collapsePromiseRef.current !== null;
-
-      if (isCollapsing) {
-        // A collapse is running (from scroll/drag). Wait, then handle normally.
-        const idx = hitSlide.projectIndex;
-        collapsePromiseRef.current!.then(() => {
-          if (idx === activeIndexRef.current) {
-            const s = slides.find((s) => s.projectIndex === idx);
-            if (s) revealSlide(s);
-          } else {
-            jumpAndReveal(idx);
-          }
-        });
-      } else if (revealedRef.current && hitSlide.projectIndex === revealedIndexRef.current) {
-        // Same slide fully revealed → navigate to project
+      if (revealedRef.current && hitSlide.projectIndex === revealedIndexRef.current) {
         onNavigate(hitSlide.slug);
       } else if (revealedRef.current) {
-        // Different slide while fully revealed → collapse then jump + reveal
-        collapseReveal().then(() => {
-          jumpAndReveal(hitSlide.projectIndex);
-        });
+        switchToSlide(hitSlide.projectIndex);
       } else if (hitSlide.projectIndex === activeIndexRef.current) {
-        // Not revealed, centered slide → reveal immediately
-        onIndexChange(hitSlide.projectIndex);
-        jumpTo(hitSlide.projectIndex);
-        revealSlide(hitSlide);
+        revealSlide(hitSlide.projectIndex);
       } else {
-        // Not revealed, different slide → jump then reveal
         jumpAndReveal(hitSlide.projectIndex);
       }
     };
 
     // ── Keyboard ──
     function handleArrow(newIdx: number) {
-      if (collapsePromiseRef.current) {
-        collapsePromiseRef.current.then(() => jumpAndReveal(newIdx));
-      } else if (revealedRef.current) {
-        collapseReveal().then(() => jumpAndReveal(newIdx));
+      if (revealedRef.current) {
+        switchToSlide(newIdx);
       } else {
         onIndexChange(newIdx);
         jumpTo(newIdx);
@@ -696,7 +723,13 @@ export const useSliderMode = ({
     return () => {
       gsap.ticker.remove(tick);
       if (jumpTweenRef.current) { jumpTweenRef.current.kill(); jumpTweenRef.current = null; }
-      clearRevealState();
+      revealingRef.current = false;
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
+      collapsingRef.current = false;
+      collapseProjectIndexRef.current = -1;
+      collapsePromiseRef.current = null;
+      collapseResolveRef.current = null;
       ctx.canvas.removeEventListener('wheel', handleWheel);
       ctx.canvas.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
@@ -728,12 +761,12 @@ export const useSliderMode = ({
       if (renderTargetRef.current) renderTargetRef.current.setSize(canvasEl.width, canvasEl.height);
       if (postfxMeshRef.current) postfxMeshRef.current.scale.set(viewport.width, viewport.height, 1);
 
-      // Reset reveal state instantly on resize — clearRevealState is scoped
-      // to the main effect, so we inline the reset here.
-      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      // Reset reveal state instantly on resize
+      revealingRef.current = false;
       revealedRef.current = false;
       revealedIndexRef.current = -1;
       collapsingRef.current = false;
+      collapseProjectIndexRef.current = -1;
       collapsePromiseRef.current = null;
       collapseResolveRef.current = null;
 
@@ -767,13 +800,14 @@ export const useSliderMode = ({
     getTotalHeight: () => totalHeightRef.current,
     getScroll: () => scrollRef.current,
     takeOwnership: () => {
-      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      revealingRef.current = false;
       revealedRef.current = false;
       revealedIndexRef.current = -1;
       collapsingRef.current = false;
+      collapseProjectIndexRef.current = -1;
       collapsePromiseRef.current = null;
       collapseResolveRef.current = null;
-      takenOverRef.current = true; // clearRevealState is scoped to the effect, inline here
+      takenOverRef.current = true;
       const snapshot = [...slidesRef.current];
       slidesRef.current = [];
       return snapshot;
