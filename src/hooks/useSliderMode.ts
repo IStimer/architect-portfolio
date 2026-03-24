@@ -31,6 +31,7 @@ interface SliderModeProps {
   texturesLoaded: boolean;
   currentIndex: number;
   onIndexChange: (index: number) => void;
+  onNavigate: (slug: string) => void;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
@@ -58,6 +59,9 @@ const SCROLL_LERP = 0.1;
 const VELOCITY_MULTIPLIER = 8.0;
 const VELOCITY_LERP = 0.12;
 const SLIDE_DISTORTION_MULT = 1.5;
+const REVEAL_DURATION = 600;     // ms — expand to full image
+const COLLAPSE_DURATION = 450;   // ms — shrink back to cropped
+const JUMP_REVEAL_DELAY = 150;   // ms — delay before reveal starts during jump
 
 // ── Hook ──────────────────────────────────────────────────────────
 
@@ -69,6 +73,7 @@ export const useSliderMode = ({
   texturesLoaded,
   currentIndex,
   onIndexChange,
+  onNavigate,
   jumpToRef,
   markVisible,
   requestFull,
@@ -103,6 +108,18 @@ export const useSliderMode = ({
   const raycastRef = useRef<Raycast | null>(null);
   const hoveredRef = useRef<string | null>(null);
   const prevVisibleRef = useRef<string>(''); // joined slug string for fast comparison
+
+  // Reveal state
+  const revealedRef = useRef(false);
+  const revealedIndexRef = useRef(-1);
+  const revealTweenRef = useRef<gsap.core.Tween | null>(null);
+
+  // Tick-based collapse (follows project across slot recycling)
+  const collapsingRef = useRef(false);
+  const collapseStartTimeRef = useRef(0);
+  const collapseStartScaleRef = useRef({ w: 0, h: 0 });
+  const collapseResolveRef = useRef<(() => void) | null>(null);
+  const collapsePromiseRef = useRef<Promise<void> | null>(null);
 
   // Slide height in world units (computed once on setup, updated on resize)
   const slideHeightRef = useRef(0);
@@ -242,6 +259,19 @@ export const useSliderMode = ({
       const pIdx = ((projectIdx % N) + N) % N;
       if (slot.projectIndex === pIdx) return; // already assigned
 
+      // If this slot held the revealed/collapsing slide, reset its scale to
+      // nominal so the NEW project in this slot looks correct. The tick-based
+      // collapse will find the project in its new slot and continue the animation.
+      if (slot.projectIndex === revealedIndexRef.current && (revealedRef.current || collapsingRef.current)) {
+        const nomW = SLIDE_W_FRAC * viewport.width;
+        const nomH = SLIDE_H_FRAC * viewport.height;
+        slot.mesh.scale.set(nomW, nomH, 1);
+        slot.program.uniforms.uMeshSize.value = [nomW, nomH];
+        slot.width = nomW;
+        slot.height = nomH;
+        // DON'T clear revealedRef/collapsingRef — the tick follows the project
+      }
+
       slot.projectIndex = pIdx;
       slot.slug = projects[pIdx].slug;
 
@@ -367,6 +397,37 @@ export const useSliderMode = ({
         onIndexChange(closestIndex);
       }
 
+      // ── Tick-based collapse: finds project by index each frame ──
+      // This allows the animation to follow a project across slot recycling.
+      if (collapsingRef.current) {
+        const revSlide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
+        const resolveAndClear = () => {
+          const resolve = collapseResolveRef.current;
+          clearRevealState();
+          resolve?.();
+        };
+        if (revSlide) {
+          const elapsed = performance.now() - collapseStartTimeRef.current;
+          const raw = Math.min(elapsed / COLLAPSE_DURATION, 1);
+          const t = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+          const nomW = SLIDE_W_FRAC * curCtx.viewport.width;
+          const nomH = SLIDE_H_FRAC * curCtx.viewport.height;
+          const cw = collapseStartScaleRef.current.w + (nomW - collapseStartScaleRef.current.w) * t;
+          const ch = collapseStartScaleRef.current.h + (nomH - collapseStartScaleRef.current.h) * t;
+          revSlide.mesh.scale.set(cw, ch, 1);
+          revSlide.program.uniforms.uMeshSize.value = [cw, ch];
+          if (raw >= 1) {
+            revSlide.mesh.scale.set(nomW, nomH, 1);
+            revSlide.program.uniforms.uMeshSize.value = [nomW, nomH];
+            revSlide.width = nomW;
+            revSlide.height = nomH;
+            resolveAndClear();
+          }
+        } else {
+          resolveAndClear();
+        }
+      }
+
       // Post-FX distortion
       if (postfxMeshRef.current) {
         const prog = postfxMeshRef.current.program;
@@ -396,9 +457,89 @@ export const useSliderMode = ({
     postfxMesh.setParent(scene);
     postfxMeshRef.current = postfxMesh;
 
+    // ── Reveal / Collapse ──
+
+    function clearRevealState() {
+      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
+      collapsingRef.current = false;
+      collapsePromiseRef.current = null;
+      collapseResolveRef.current = null;
+    }
+
+    function revealSlide(slide: SlideData) {
+      clearRevealState();
+
+      const res = slide.program.uniforms.uResolution.value;
+      const imgW = res[0], imgH = res[1];
+      if (imgW === 0 || imgH === 0) return;
+      const imgAspect = imgW / imgH;
+
+      const curH = SLIDE_H_FRAC * viewport.height;
+      let targetW = curH * imgAspect;
+      let targetH = curH;
+      const maxW = viewport.width * 0.70;
+      if (targetW > maxW) {
+        targetW = maxW;
+        targetH = targetW / imgAspect;
+      }
+
+      revealedRef.current = true;
+      revealedIndexRef.current = slide.projectIndex;
+
+      const proxy = { w: slide.mesh.scale.x as number, h: slide.mesh.scale.y as number };
+      revealTweenRef.current = gsap.to(proxy, {
+        w: targetW,
+        h: targetH,
+        duration: REVEAL_DURATION / 1000,
+        ease: 'power2.inOut',
+        onUpdate: () => {
+          slide.mesh.scale.set(proxy.w, proxy.h, 1);
+          slide.program.uniforms.uMeshSize.value = [proxy.w, proxy.h];
+        },
+        onComplete: () => { revealTweenRef.current = null; },
+      });
+    }
+
+    function collapseReveal(instant = false): Promise<void> {
+      if (!revealedRef.current) return Promise.resolve();
+      if (!instant && collapsingRef.current && collapsePromiseRef.current) return collapsePromiseRef.current;
+
+      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+
+      const slide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
+      if (!slide) { clearRevealState(); return Promise.resolve(); }
+
+      if (instant) {
+        const nomW = SLIDE_W_FRAC * viewport.width;
+        const nomH = SLIDE_H_FRAC * viewport.height;
+        slide.mesh.scale.set(nomW, nomH, 1);
+        slide.program.uniforms.uMeshSize.value = [nomW, nomH];
+        slide.width = nomW;
+        slide.height = nomH;
+        clearRevealState();
+        return Promise.resolve();
+      }
+
+      collapsingRef.current = true;
+      collapseStartTimeRef.current = performance.now();
+      collapseStartScaleRef.current = {
+        w: slide.mesh.scale.x as number,
+        h: slide.mesh.scale.y as number,
+      };
+
+      const promise = new Promise<void>((resolve) => {
+        collapseResolveRef.current = resolve;
+      });
+      collapsePromiseRef.current = promise;
+      return promise;
+    }
+
     // ── Wheel ──
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      collapseReveal();
       if (jumpTweenRef.current) { jumpTweenRef.current.kill(); jumpTweenRef.current = null; }
       scrollTargetRef.current += e.deltaY * 0.005;
     };
@@ -457,37 +598,110 @@ export const useSliderMode = ({
       if (foundSlug !== hoveredRef.current) hoveredRef.current = foundSlug;
     };
 
+    // Wait for any in-flight collapse, then jump to a new index and reveal it
+    function jumpAndReveal(targetIndex: number) {
+      onIndexChange(targetIndex);
+      jumpTo(targetIndex);
+      gsap.delayedCall(0.85, () => {
+        const targetSlide = slides.find((s) => s.projectIndex === targetIndex);
+        if (targetSlide) revealSlide(targetSlide);
+      });
+    }
+
     const handlePointerUp = (e: PointerEvent) => {
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
       ctx.canvas.style.cursor = '';
-      if (Math.abs(e.clientY - dragStartYRef.current) < 5) {
-        const curCtx = getContext();
-        if (curCtx && raycastRef.current) {
-          raycastRef.current.castMouse(curCtx.camera, mouseRef.current);
-          const hits = raycastRef.current.intersectMeshes(slides.map((s) => s.mesh));
-          if (hits.length > 0) {
-            const hitSlide = slides.find((s) => s.mesh === hits[0]);
-            if (hitSlide) {
-              onIndexChange(hitSlide.projectIndex);
-              jumpTo(hitSlide.projectIndex);
-            }
+      if (Math.abs(e.clientY - dragStartYRef.current) >= 5) {
+        collapseReveal();
+        return;
+      }
+      // Click detection
+      const curCtx = getContext();
+      if (!curCtx || !raycastRef.current) return;
+      raycastRef.current.castMouse(curCtx.camera, mouseRef.current);
+      const hits = raycastRef.current.intersectMeshes(slides.map((s) => s.mesh));
+      if (hits.length === 0) return;
+      const hitSlide = slides.find((s) => s.mesh === hits[0]);
+      if (!hitSlide) return;
+
+      const isCollapsing = collapsePromiseRef.current !== null;
+
+      if (isCollapsing) {
+        // A collapse is running (from scroll/drag). Wait, then handle normally.
+        const idx = hitSlide.projectIndex;
+        collapsePromiseRef.current!.then(() => {
+          if (idx === activeIndexRef.current) {
+            const s = slides.find((s) => s.projectIndex === idx);
+            if (s) revealSlide(s);
+          } else {
+            jumpAndReveal(idx);
           }
-        }
+        });
+      } else if (revealedRef.current && hitSlide.projectIndex === revealedIndexRef.current) {
+        // Same slide fully revealed → navigate to project
+        onNavigate(hitSlide.slug);
+      } else if (revealedRef.current) {
+        // Different slide while fully revealed → collapse then jump + reveal
+        collapseReveal().then(() => {
+          jumpAndReveal(hitSlide.projectIndex);
+        });
+      } else if (hitSlide.projectIndex === activeIndexRef.current) {
+        // Not revealed, centered slide → reveal immediately
+        onIndexChange(hitSlide.projectIndex);
+        jumpTo(hitSlide.projectIndex);
+        revealSlide(hitSlide);
+      } else {
+        // Not revealed, different slide → jump then reveal
+        jumpAndReveal(hitSlide.projectIndex);
+      }
+    };
+
+    // ── Keyboard ──
+    function handleArrow(newIdx: number) {
+      if (collapsePromiseRef.current) {
+        collapsePromiseRef.current.then(() => jumpAndReveal(newIdx));
+      } else if (revealedRef.current) {
+        collapseReveal().then(() => jumpAndReveal(newIdx));
+      } else {
+        onIndexChange(newIdx);
+        jumpTo(newIdx);
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        collapseReveal();
+        return;
+      }
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleArrow(((activeIndexRef.current - 1) + N) % N);
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleArrow((activeIndexRef.current + 1) % N);
+        return;
       }
     };
 
     ctx.canvas.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       gsap.ticker.remove(tick);
       if (jumpTweenRef.current) { jumpTweenRef.current.kill(); jumpTweenRef.current = null; }
+      clearRevealState();
       ctx.canvas.removeEventListener('wheel', handleWheel);
       ctx.canvas.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('keydown', handleKeyDown);
 
       // Only remove meshes if transition hasn't taken ownership
       if (!takenOverRef.current) {
@@ -501,7 +715,7 @@ export const useSliderMode = ({
       raycastRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, jumpTo, markVisible, requestFull, getTier]);
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, jumpTo, markVisible, requestFull, getTier]);
 
   // ── Resize ──
   useEffect(() => {
@@ -513,6 +727,15 @@ export const useSliderMode = ({
       const canvasEl = gl.canvas as HTMLCanvasElement;
       if (renderTargetRef.current) renderTargetRef.current.setSize(canvasEl.width, canvasEl.height);
       if (postfxMeshRef.current) postfxMeshRef.current.scale.set(viewport.width, viewport.height, 1);
+
+      // Reset reveal state instantly on resize — clearRevealState is scoped
+      // to the main effect, so we inline the reset here.
+      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
+      collapsingRef.current = false;
+      collapsePromiseRef.current = null;
+      collapseResolveRef.current = null;
 
       const w = SLIDE_W_FRAC * viewport.width;
       const h = SLIDE_H_FRAC * viewport.height;
@@ -544,7 +767,13 @@ export const useSliderMode = ({
     getTotalHeight: () => totalHeightRef.current,
     getScroll: () => scrollRef.current,
     takeOwnership: () => {
-      takenOverRef.current = true;
+      if (revealTweenRef.current) { revealTweenRef.current.kill(); revealTweenRef.current = null; }
+      revealedRef.current = false;
+      revealedIndexRef.current = -1;
+      collapsingRef.current = false;
+      collapsePromiseRef.current = null;
+      collapseResolveRef.current = null;
+      takenOverRef.current = true; // clearRevealState is scoped to the effect, inline here
       const snapshot = [...slidesRef.current];
       slidesRef.current = [];
       return snapshot;

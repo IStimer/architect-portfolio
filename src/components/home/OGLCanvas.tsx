@@ -109,6 +109,7 @@ const OGLCanvas = ({
     texturesLoaded,
     currentIndex,
     onIndexChange,
+    onNavigate,
     jumpToRef,
     markVisible,
     requestFull,
