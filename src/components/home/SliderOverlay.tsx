@@ -5,6 +5,7 @@ import type { SanityCategory } from '../../services/projectService';
 
 interface SliderOverlayProps {
   active: boolean;
+  revealed: boolean;
   currentIndex: number;
   projects: ProjectData[];
   onJumpTo: (index: number) => void;
@@ -20,7 +21,7 @@ const VISIBLE_THUMBS = 15;
 const HALF_VISIBLE = Math.floor(VISIBLE_THUMBS / 2);
 
 const SliderOverlay = ({
-  active, currentIndex, projects, onJumpTo,
+  active, revealed, currentIndex, projects, onJumpTo,
   categories, activeCategory, lang, onFilter,
   viewMode, onToggleMode,
 }: SliderOverlayProps) => {
@@ -214,9 +215,6 @@ const SliderOverlay = ({
           {String(total).padStart(2, '0')}
         </span>
 
-      </div>
-
-      <div className="slider-overlay__panel">
         {categories.length > 0 && (
           <nav className="slider-overlay__filters">
             <button
@@ -237,14 +235,10 @@ const SliderOverlay = ({
           </nav>
         )}
 
-        <div className="slider-overlay__panel-content">
-          <div className="slider-overlay__panel-inner">
-            <h2 className="slider-overlay__title">
-              {titleLines[1] && <span className="slider-overlay__title-line2">{titleLines[1]}</span>}
-            </h2>
-            <p className="slider-overlay__subtitle">{project.subtitle}</p>
-          </div>
-        </div>
+        <h2 className="slider-overlay__title">
+          {titleLines[1] && <span className="slider-overlay__title-line2">{titleLines[1]}</span>}
+        </h2>
+        <p className="slider-overlay__subtitle">{project.subtitle}</p>
 
         <button
           className="slider-overlay__mode-toggle"
@@ -259,9 +253,10 @@ const SliderOverlay = ({
             Grid
           </span>
         </button>
+      </div>
 
-        <div className="slider-overlay__minimap">
-          <div ref={trackRef} className="slider-overlay__minimap-track">
+      <div className={`slider-overlay__minimap${revealed ? ' slider-overlay__minimap--visible' : ''}`}>
+        <div ref={trackRef} className="slider-overlay__minimap-track">
             {thumbWindow.map(({ realIndex, offset }) => (
               <button
                 key={`thumb-${offset}`}
@@ -280,7 +275,6 @@ const SliderOverlay = ({
             ))}
           </div>
         </div>
-      </div>
     </div>
   );
 };

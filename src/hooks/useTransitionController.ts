@@ -34,9 +34,7 @@ function sliderTargets(
   vp: { width: number; height: number },
   idx: number,
 ) {
-  const minimapW = (80 / window.innerWidth) * vp.width;
-  const panelW = vp.width * 0.25;
-  const cx = (-vp.width / 2 + minimapW + vp.width / 2 - panelW) / 2;
+  const cx = 0;
   const w = 0.35 * vp.height;
   const h = 0.35 * vp.height;
   const sp = SLIDE_SPACING * vp.height;

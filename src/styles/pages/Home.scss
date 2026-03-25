@@ -25,11 +25,9 @@
 
 .slider-title-blend {
   position: fixed;
-  // Vertically: center minus half the panel's bottom padding offset
-  top: calc(50% - 7.5vh);
-  // Horizontally: right edge at panel left border + slight quinconce
-  right: 25%;
-  transform: translate(0.3em, -100%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
   z-index: 2;
   white-space: nowrap;
   pointer-events: none;

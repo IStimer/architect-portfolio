@@ -12,7 +12,6 @@ const REVERSE_FADE_DURATION = 0.4;
 
 // Slider layout (must match useSliderMode.ts)
 const SLIDE_SIZE_FRAC = 0.35;
-const PANEL_FRAC = 0.25;
 
 // Camera (must match useOGLRenderer.ts)
 const CAMERA_FOV = 45;
@@ -70,10 +69,9 @@ function getSlideTargetRect(): { top: number; left: number; width: number; heigh
   const vpW = vpH * (cw / ch);
 
   const slideSize = SLIDE_SIZE_FRAC * vpH;
-  const centerX = -(vpW * PANEL_FRAC) / 2;
 
   return {
-    left: ((centerX - slideSize / 2 + vpW / 2) / vpW) * cw,
+    left: ((vpW / 2 - slideSize / 2) / vpW) * cw,
     top: ((vpH / 2 - slideSize / 2) / vpH) * ch,
     width: (slideSize / vpW) * cw,
     height: (slideSize / vpH) * ch,

@@ -128,11 +128,10 @@ export const useOpeningAnimation = ({
     const colGap = COL_SPACING_FRAC * vp5W;
     const slideH = meshH + SLIDE_SPACING * vp5H;
 
-    // Slider X offset (accounts for panel)
-    const panelW = vp5W * 0.25;
-    const centerX = -panelW / 2;
+    // Slider X offset (centered in viewport)
+    const centerX = 0;
 
-    // Animation center (screen center, shifts to centerX during rezoom)
+    // Animation center (same as slider center now)
     const animCenterX = 0;
 
     // ── Column X positions ──

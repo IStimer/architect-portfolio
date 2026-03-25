@@ -33,6 +33,7 @@ const Home = () => {
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(!state.introCompleted);
+  const [isRevealed, setIsRevealed] = useState(false);
 
   const showIntro = showIntroOverlay;
   const canvasActive = !showIntro || openingActive;
@@ -86,6 +87,10 @@ const Home = () => {
       return prev; // ignore during transition or opening
     });
     setHoveredSlug(null);
+  }, []);
+
+  const handleRevealChange = useCallback((revealed: boolean) => {
+    setIsRevealed(revealed);
   }, []);
 
   const handleTransitionComplete = useCallback((target: 'slider' | 'grid') => {
@@ -175,6 +180,7 @@ const Home = () => {
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
+          onRevealChange={handleRevealChange}
           onTransitionComplete={handleTransitionComplete}
           onFilterDezoomComplete={handleFilterDezoomComplete}
           openingActive={openingActive}
@@ -185,6 +191,7 @@ const Home = () => {
           <>
             <SliderOverlay
               active={canvasActive && isSliderVisible && !isFilterDezoom}
+              revealed={isRevealed}
               currentIndex={currentIndex}
               projects={filteredProjects}
               onJumpTo={handleJumpTo}

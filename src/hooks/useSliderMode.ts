@@ -32,6 +32,7 @@ interface SliderModeProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onNavigate: (slug: string) => void;
+  onRevealChange?: (revealed: boolean) => void;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
@@ -77,6 +78,7 @@ export const useSliderMode = ({
   currentIndex,
   onIndexChange,
   onNavigate,
+  onRevealChange,
   jumpToRef,
   markVisible,
   requestFull,
@@ -192,9 +194,8 @@ export const useSliderMode = ({
     slideHeightRef.current = slideH;
     totalHeightRef.current = N * slideH;
 
-    // ── Center X ──
-    const panelW = viewport.width * 0.25;
-    const centerX = -panelW / 2;
+    // ── Center X (centered in viewport) ──
+    const centerX = 0;
 
     // ── Create render target + scene ──
     const rt = new RenderTarget(gl, { width: canvasEl.width, height: canvasEl.height });
@@ -539,6 +540,7 @@ export const useSliderMode = ({
       revealingRef.current = true;
       revealedRef.current = true;
       revealedIndexRef.current = projectIndex;
+      onRevealChange?.(true);
       revealStartTimeRef.current = performance.now();
       revealDurationRef.current = duration;
       revealTargetScaleRef.current = target;
@@ -564,6 +566,7 @@ export const useSliderMode = ({
 
       // Stop any in-progress reveal
       revealingRef.current = false;
+      onRevealChange?.(false);
 
       const slide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
       if (!slide) {
@@ -767,7 +770,7 @@ export const useSliderMode = ({
       raycastRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, jumpTo, markVisible, requestFull, getTier]);
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, onRevealChange, jumpTo, markVisible, requestFull, getTier]);
 
   // ── Resize ──
   useEffect(() => {
@@ -795,9 +798,7 @@ export const useSliderMode = ({
       slideHeightRef.current = h + spacing;
       totalHeightRef.current = projects.length * slideHeightRef.current;
 
-      const minimapW = (80 / window.innerWidth) * viewport.width;
-      const panelW = viewport.width * 0.25;
-      const centerX = (-viewport.width / 2 + minimapW + viewport.width / 2 - panelW) / 2;
+      const centerX = 0;
 
       slidesRef.current.forEach((slide) => {
         slide.width = w;
