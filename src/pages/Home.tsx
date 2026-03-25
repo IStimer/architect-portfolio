@@ -203,15 +203,6 @@ const Home = () => {
               onToggleMode={handleToggleMode}
             />
 
-            {canvasActive && isSliderVisible && !isFilterDezoom && filteredProjects[currentIndex] && (
-              <span className="slider-title-blend">
-                {(() => {
-                  const words = filteredProjects[currentIndex].title.split(' ');
-                  const mid = Math.ceil(words.length / 2);
-                  return words.length > 1 ? words.slice(0, mid).join(' ') : filteredProjects[currentIndex].title;
-                })()}
-              </span>
-            )}
 
             <GridOverlay
               active={canvasActive && isGridVisible && !isFilterDezoom}

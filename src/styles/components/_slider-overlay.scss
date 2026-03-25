@@ -109,38 +109,35 @@
   }
 }
 
-// ── Title + subtitle (centered in viewport) ─────────────────────
+// ── Title (above expanded slide, single line) ───────────────────
 .slider-overlay__title {
   position: absolute;
-  top: 50%;
+  // Positioned just above the expanded slide (slide center = 50vh)
+  bottom: calc(50% + 20vh);
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   @include text-4xl;
   font-family: var(--font-primary);
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 0.9;
   margin: 0;
-  text-align: center;
-}
-
-.slider-overlay__title-line2 {
-  display: block;
   white-space: nowrap;
 }
 
+// ── Subtitle (bottom right of expanded slide) ───────────────────
 .slider-overlay__subtitle {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, 0.5em);
+  // Positioned just below the expanded slide, right-aligned
+  top: calc(50% + 20vh);
+  right: calc(50% - 35vw);
   @include text-xs;
   font-family: var(--font-secondary);
   opacity: 0.45;
   margin: 0;
   line-height: 1.4;
   max-width: 320px;
-  text-align: center;
+  text-align: right;
 }
 
 // ── Mode toggle (bottom right) ──────────────────────────────────

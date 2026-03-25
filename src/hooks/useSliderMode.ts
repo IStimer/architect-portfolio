@@ -464,18 +464,20 @@ export const useSliderMode = ({
         }
       }
 
-      // ── Push neighbors apart when a slide is expanded ──
+      // ── Push neighbors off-screen when a slide is expanded ──
       const nomH = SLIDE_SIZE_FRAC * curCtx.viewport.height;
       for (let i = 0; i < actualCount; i++) {
         const extra = (slides[i].mesh.scale.y as number) - nomH;
         if (extra < 0.01) continue;
         const expandY = slides[i].mesh.position.y as number;
+        // Push neighbors to viewport edges so only the expanded slide is visible
+        const push = curCtx.viewport.height;
         for (let j = 0; j < actualCount; j++) {
           if (j === i) continue;
           if ((slides[j].mesh.position.y as number) > expandY) {
-            slides[j].mesh.position.y += extra / 2;
+            slides[j].mesh.position.y += push;
           } else {
-            slides[j].mesh.position.y -= extra / 2;
+            slides[j].mesh.position.y -= push;
           }
         }
       }

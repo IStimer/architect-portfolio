@@ -46,15 +46,6 @@ const SliderOverlay = ({
   const project = projects[currentIndex];
   const total = projects.length;
 
-  // Split title into two roughly equal lines
-  const titleLines = useMemo(() => {
-    if (!project) return ['', ''];
-    const words = project.title.split(' ');
-    if (words.length <= 1) return [project.title, ''];
-    const mid = Math.ceil(words.length / 2);
-    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
-  }, [project]);
-
   const thumbWindow = useMemo(() => {
     if (total === 0) return [];
     const items: { realIndex: number; offset: number }[] = [];
@@ -235,10 +226,12 @@ const SliderOverlay = ({
           </nav>
         )}
 
-        <h2 className="slider-overlay__title">
-          {titleLines[1] && <span className="slider-overlay__title-line2">{titleLines[1]}</span>}
-        </h2>
-        <p className="slider-overlay__subtitle">{project.subtitle}</p>
+        {revealed && (
+          <>
+            <h2 className="slider-overlay__title">{project.title}</h2>
+            <p className="slider-overlay__subtitle">{project.subtitle}</p>
+          </>
+        )}
 
         <button
           className="slider-overlay__mode-toggle"
