@@ -13,7 +13,7 @@ let overlayEl: HTMLDivElement | null = null;
 
 /** Call before navigation: stores data + creates a fixed overlay at the slide position. */
 export function prepareHeroTransition(data: HeroTransitionData) {
-  cleanup(); // remove any stale overlay
+  cleanup();
   pending = data;
 
   const el = document.createElement('div');
@@ -29,7 +29,7 @@ export function prepareHeroTransition(data: HeroTransitionData) {
     background-size: cover;
     background-position: center;
     pointer-events: none;
-    will-change: transform, top, left, width, height;
+    will-change: top, left, width, height;
   `;
   document.body.appendChild(el);
   overlayEl = el;
