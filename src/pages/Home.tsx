@@ -85,16 +85,6 @@ const Home = () => {
     setHoveredSlug(slug);
   }, []);
 
-  // Preload full-quality hero in browser cache when a slide is revealed
-  const handleReveal = useCallback(
-    (slug: string) => {
-      const project = filteredProjects.find(p => p.slug === slug);
-      const url = project?.heroImageFull ?? project?.heroImage;
-      if (url) { const img = new Image(); img.src = url; }
-    },
-    [filteredProjects]
-  );
-
   const handleNavigate = useCallback(
     (slug: string) => {
       const project = filteredProjects.find(p => p.slug === slug);
@@ -165,7 +155,6 @@ const Home = () => {
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
-          onReveal={handleReveal}
           onTransitionComplete={handleTransitionComplete}
           onFilterDezoomComplete={handleFilterDezoomComplete}
           openingActive={openingActive}

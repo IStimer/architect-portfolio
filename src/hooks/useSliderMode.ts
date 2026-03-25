@@ -32,11 +32,9 @@ interface SliderModeProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onNavigate: (slug: string) => void;
-  onReveal: (slug: string) => void;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
-  requestHero?: (slug: string) => void;
   getTier?: (slug: string) => TextureTier;
   initialMeshes?: SlideData[];
 }
@@ -79,11 +77,9 @@ export const useSliderMode = ({
   currentIndex,
   onIndexChange,
   onNavigate,
-  onReveal,
   jumpToRef,
   markVisible,
   requestFull,
-  requestHero,
   getTier,
   initialMeshes,
 }: SliderModeProps): SliderModeHandle => {
@@ -294,9 +290,6 @@ export const useSliderMode = ({
         slot.program.uniforms.uTexture.value = entry.texture;
         slot.program.uniforms.uResolution.value = [entry.width, entry.height];
       }
-
-      // Request full-res on slot reassignment (not every frame)
-      requestFull?.(slot.slug);
 
       // Reset hover for recycled slot
       slot.program.uniforms.uHover.value = 0;
@@ -550,12 +543,9 @@ export const useSliderMode = ({
       revealDurationRef.current = duration;
       revealTargetScaleRef.current = target;
 
-      // Upgrade texture to hero quality (2400px with mipmaps)
+      // Upgrade texture to full quality (1200px) on expand
       const slug = slides.find((s) => s.projectIndex === projectIndex)?.slug;
-      if (slug) {
-        requestHero?.(slug);
-        onReveal(slug);
-      }
+      if (slug) requestFull?.(slug);
     }
 
     function startCollapse(slide: SlideData) {
@@ -666,7 +656,6 @@ export const useSliderMode = ({
         const isHit = hits.some((h: any) => h === slide.mesh);
         if (isHit) {
           foundSlug = slide.slug;
-          requestFull?.(slide.slug);
           const localX = (e.clientX / window.innerWidth - 0.5) * curCtx.viewport.width;
           const localY = (0.5 - e.clientY / window.innerHeight) * curCtx.viewport.height;
           slide.program.uniforms.uMouse.value = [
@@ -778,7 +767,7 @@ export const useSliderMode = ({
       raycastRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, onReveal, jumpTo, markVisible, requestFull, requestHero, getTier]);
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, jumpTo, markVisible, requestFull, getTier]);
 
   // ── Resize ──
   useEffect(() => {

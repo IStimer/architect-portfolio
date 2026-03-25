@@ -22,7 +22,6 @@ interface OGLCanvasProps {
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
-  onReveal: (slug: string) => void;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
   onFilterDezoomComplete: () => void;
   openingActive?: boolean;
@@ -41,7 +40,6 @@ const OGLCanvas = ({
   onIndexChange,
   onHover,
   onNavigate,
-  onReveal,
   onTransitionComplete,
   onFilterDezoomComplete,
   openingActive = false,
@@ -59,7 +57,6 @@ const OGLCanvas = ({
     loaded: texturesLoaded,
     markVisible,
     requestFull,
-    requestHero,
     getTier,
   } = useTextureManager(gl, allProjects);
 
@@ -113,11 +110,9 @@ const OGLCanvas = ({
     currentIndex,
     onIndexChange,
     onNavigate,
-    onReveal,
     jumpToRef,
     markVisible,
     requestFull,
-    requestHero,
     getTier,
     initialMeshes: handoffSlides ?? filterHandoffSlides ?? undefined,
   });

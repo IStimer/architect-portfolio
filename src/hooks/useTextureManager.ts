@@ -357,16 +357,6 @@ export function useTextureManager(
     [requestTier],
   );
 
-  // ── Request hero-res (2400px, for reveal/expand) ─────────────
-  const requestHero = useCallback(
-    (slug: string) => {
-      const meta = metaRef.current.get(slug);
-      if (meta) meta.lastAccess = performance.now();
-      requestTier(slug, TextureTier.HERO);
-    },
-    [requestTier],
-  );
-
   // ── Get current tier for a slug ───────────────────────────────
   const getTier = useCallback((slug: string): TextureTier => {
     return metaRef.current.get(slug)?.tier ?? TextureTier.NONE;
@@ -384,7 +374,6 @@ export function useTextureManager(
     loaded,
     markVisible,
     requestFull,
-    requestHero,
     requestTier,
     getTier,
   };
