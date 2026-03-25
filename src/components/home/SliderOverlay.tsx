@@ -213,6 +213,7 @@ const SliderOverlay = ({
           {' / '}
           {String(total).padStart(2, '0')}
         </span>
+
       </div>
 
       <div className="slider-overlay__panel">
@@ -239,7 +240,6 @@ const SliderOverlay = ({
         <div className="slider-overlay__panel-content">
           <div className="slider-overlay__panel-inner">
             <h2 className="slider-overlay__title">
-              <span className="slider-overlay__title-line1">{titleLines[0]}</span>
               {titleLines[1] && <span className="slider-overlay__title-line2">{titleLines[1]}</span>}
             </h2>
             <p className="slider-overlay__subtitle">{project.subtitle}</p>

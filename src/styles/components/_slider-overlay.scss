@@ -1,5 +1,6 @@
 @use "../abstracts/mixins" as *;
 
+// ── Layout ──────────────────────────────────────────────────────
 .slider-overlay {
   position: fixed;
   inset: 0;
@@ -9,10 +10,14 @@
   grid-template-columns: 1fr 25%;
 }
 
-// ---------- Center (canvas zone + crosshair line) ----------
+// ── Center zone (canvas area) ───────────────────────────────────
 .slider-overlay__center {
   pointer-events: none;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(12px, 3vw, 48px);
 }
 
 .slider-overlay__crosshair {
@@ -24,41 +29,8 @@
   background: rgba(0, 0, 0, 0.12);
 }
 
-// ---------- Info panel (right) ----------
-.slider-overlay__panel {
-  background: #fff;
-  position: relative;
-  color: #111;
-  display: flex;
-  flex-direction: column;
-  pointer-events: none;
-  padding: 0;
-  border-left: 1px solid rgba(0, 0, 0, 0.06);
-  overflow: visible;
-}
-
-.slider-overlay__panel-content {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  padding: 48px 0;
-  padding-bottom: 15%;
-  overflow: visible;
-}
-
-.slider-overlay__panel-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-}
-
-
-
 .slider-overlay__category {
-  position: absolute;
-  top: 3vw;
-  left: 3vw;
+  align-self: flex-start;
   @include text-2xs;
   font-family: var(--font-secondary);
   letter-spacing: 0.15em;
@@ -73,6 +45,62 @@
   }
 }
 
+.slider-overlay__counter {
+  align-self: flex-start;
+  font-family: var(--font-secondary);
+  font-size: clamp(9px, 0.7vw, 12px);
+  letter-spacing: 0.1em;
+  color: #111;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.slider-overlay__digit {
+  display: inline-flex;
+  overflow: hidden;
+  position: relative;
+  width: 0.6em;
+  height: 1em;
+
+  > span {
+    display: block;
+    position: absolute;
+    inset: 0;
+    line-height: 1;
+  }
+}
+
+// ── Panel (sidebar) ─────────────────────────────────────────────
+.slider-overlay__panel {
+  position: relative;
+  background: #fff;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: visible;
+}
+
+.slider-overlay__panel-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: clamp(24px, 5vh, 48px) 0;
+  padding-bottom: 15%;
+  overflow: visible;
+}
+
+.slider-overlay__panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1vh, 16px);
+  width: 100%;
+}
+
+// ── Title ───────────────────────────────────────────────────────
 .slider-overlay__title {
   @include text-4xl;
   font-family: var(--font-primary);
@@ -80,15 +108,6 @@
   letter-spacing: -0.02em;
   line-height: 0.9;
   margin: 0;
-  position: relative;
-}
-
-.slider-overlay__title-line1 {
-  // Right edge flush with panel left border, slight offset for staggered look
-  position: absolute;
-  right: calc(100% - 0.3em);
-  bottom: calc(100% + 0.15em);
-  white-space: nowrap;
 }
 
 .slider-overlay__title-line2 {
@@ -105,44 +124,13 @@
   max-width: 320px;
 }
 
-.slider-overlay__counter {
-  position: absolute;
-  bottom: 3vw;
-  left: 3vw;
-  font-family: var(--font-secondary);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  color: #111;
-  font-variant-numeric: tabular-nums;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-}
-
-.slider-overlay__digit {
-  display: inline-flex;
-  overflow: hidden;
-  position: relative;
-  width: 0.65em;
-  height: 1em;
-
-  > span {
-    display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    line-height: 1;
-  }
-}
-
-// ---------- Filters (top of sidebar, in flex flow) ----------
+// ── Filters (sidebar top) ───────────────────────────────────────
 .slider-overlay__filters {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 24px;
+  padding: clamp(16px, 3vh, 32px) clamp(16px, 2vw, 32px);
   pointer-events: auto;
   flex-shrink: 0;
 }
@@ -153,7 +141,7 @@
   padding: 0;
   cursor: pointer;
   font-family: var(--font-secondary);
-  font-size: 10px;
+  font-size: clamp(9px, 0.7vw, 12px);
   letter-spacing: 0.12em;
   color: rgba(0, 0, 0, 0.25);
   transition: color 0.3s;
@@ -166,10 +154,9 @@
   &--active {
     color: #111;
   }
-
 }
 
-// ---------- Mode toggle (in flex flow, above minimap) ----------
+// ── Mode toggle (sidebar, above minimap) ────────────────────────
 .slider-overlay__mode-toggle {
   display: flex;
   align-items: center;
@@ -177,11 +164,11 @@
   gap: 8px;
   background: none;
   border: none;
-  padding: 16px 24px;
+  padding: clamp(12px, 2vh, 20px) clamp(16px, 2vw, 32px);
   cursor: pointer;
   pointer-events: auto;
   font-family: var(--font-secondary);
-  font-size: 10px;
+  font-size: clamp(9px, 0.7vw, 12px);
   letter-spacing: 0.12em;
   color: rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s;
@@ -205,13 +192,13 @@
   color: rgba(0, 0, 0, 0.15);
 }
 
-// ---------- Minimap (bottom of panel, infinite horizontal) ----------
+// ── Minimap (sidebar bottom) ────────────────────────────────────
 .slider-overlay__minimap {
   pointer-events: auto;
   position: relative;
   overflow: hidden;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 12px 0;
+  padding: clamp(8px, 1.5vh, 16px) 0;
   display: flex;
   justify-content: center;
   mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
@@ -244,7 +231,7 @@
   }
 
   img {
-    width: 56px;
+    width: clamp(40px, 4vw, 64px);
     aspect-ratio: 16 / 10;
     object-fit: cover;
     display: block;
