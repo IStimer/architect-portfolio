@@ -1,6 +1,6 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import type { ProjectData } from '../../types';
-import { hasPendingTransition, animateHeroTransition, getTransitionImageUrl } from '../../services/heroTransition';
+import { hasPendingTransition, finishHeroTransition, getTransitionImageUrl } from '../../services/heroTransition';
 
 interface ProjectHeroProps {
   project: ProjectData;
@@ -9,19 +9,17 @@ interface ProjectHeroProps {
 }
 
 export const ProjectHero = ({ project, onBack }: ProjectHeroProps) => {
-  const hasFlip = hasPendingTransition();
-  const [flipDone, setFlipDone] = useState(!hasFlip);
-  // Use the exact same URL as the overlay to avoid any reload/flash
+  const hasTransition = useRef(hasPendingTransition()).current;
   const heroUrl = useRef(getTransitionImageUrl() ?? project.heroImage).current;
   const targetRef = useRef<HTMLDivElement>(null);
 
-  // FLIP: animate overlay from slider position → hero target area
+  // Remove the overlay — the hero target is hidden until the overlay is gone
   useEffect(() => {
-    if (flipDone || !targetRef.current) return;
-    const el = targetRef.current;
-    const heroBounds = el.getBoundingClientRect();
-    animateHeroTransition(heroBounds, el).then(() => setFlipDone(true));
-  }, [flipDone]);
+    if (!hasTransition || !targetRef.current) return;
+    requestAnimationFrame(() => {
+      finishHeroTransition(targetRef.current ?? undefined);
+    });
+  }, [hasTransition]);
 
   return (
     <div className="project-hero">
@@ -34,6 +32,7 @@ export const ProjectHero = ({ project, onBack }: ProjectHeroProps) => {
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           } : {}),
+          ...(hasTransition ? { visibility: 'hidden' as const } : {}),
         }}
       />
       <div className="project-hero__header">

@@ -9,7 +9,8 @@ import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
 import { lenisService } from '../services/lenisService';
-import { prepareHeroTransition } from '../services/heroTransition';
+import { startHeroTransition } from '../services/heroTransition';
+import { preloadProjectChunk } from '../hooks/usePageTransition';
 import { localizedPath } from '../i18n/routes';
 import type { ViewMode } from '../types';
 import '../styles/pages/Home.scss';
@@ -35,6 +36,9 @@ const Home = () => {
 
   const showIntro = showIntroOverlay;
   const canvasActive = !showIntro || openingActive;
+
+  // Prefetch Project page chunk on idle so first navigation is instant
+  useEffect(() => { preloadProjectChunk(); }, []);
 
   // Filter projects by active category
   const filteredProjects = useMemo(() => {
@@ -88,20 +92,24 @@ const Home = () => {
   const handleNavigate = useCallback(
     (slug: string) => {
       const project = filteredProjects.find(p => p.slug === slug);
-      const canvasEl = document.querySelector('.ogl-canvas-handle') as any;
+      const canvasEl = document.querySelector('.ogl-canvas') as any;
       const rect = canvasEl?.__getRevealedScreenRect?.() as DOMRect | null;
-      const imageUrl = project?.heroImageFull ?? project?.heroImage;
+      const imageUrl = project?.heroImage;
 
       if (imageUrl && rect) {
-        prepareHeroTransition({ imageUrl, rect });
+        // Morph image to hero position first, then navigate when done
+        startHeroTransition({ imageUrl, rect }, () => {
+          navigateTo('project', { slug });
+        });
+      } else {
+        navigateTo('project', { slug });
       }
-      navigateTo('project', { slug });
     },
     [navigateTo, filteredProjects]
   );
 
   const handleJumpTo = useCallback((index: number) => {
-    const canvasEl = document.querySelector('.ogl-canvas-handle') as any;
+    const canvasEl = document.querySelector('.ogl-canvas') as any;
     if (canvasEl?.__jumpTo) {
       canvasEl.__jumpTo(index);
     }

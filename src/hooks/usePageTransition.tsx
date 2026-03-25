@@ -64,33 +64,30 @@ export const usePageTransition = () => {
         const flipActive = hasPendingTransition();
         const reduced = prefersReducedMotion();
 
-        // ----- Fadeout animation -----
-        if (!reduced) {
+        // ----- Fadeout animation (skip entirely for FLIP — overlay covers) -----
+        if (!reduced && !flipActive) {
           const pageContent = document.querySelector(".page-content");
           const customCursor = document.querySelector(".custom-cursor");
-          // FLIP: fast fadeout (overlay stays visible on top)
-          const fadeDur = flipActive ? 0.15 : TIMINGS.CONTENT_FADE;
 
           const tl = gsap.timeline();
           if (pageContent)
-            tl.to(pageContent, { opacity: 0, duration: fadeDur, ease: EASE }, 0);
+            tl.to(pageContent, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
           if (customCursor)
-            tl.to(customCursor, { opacity: 0, duration: fadeDur, ease: EASE }, 0);
+            tl.to(customCursor, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
 
           await tl.then();
-          if (!flipActive) {
-            await new Promise<void>((r) =>
-              gsap.delayedCall(TIMINGS.PRE_TRANSITION, r),
-            );
-          }
+          await new Promise<void>((r) =>
+            gsap.delayedCall(TIMINGS.PRE_TRANSITION, r),
+          );
         }
 
         // ----- Wait for chunk to be ready -----
         await chunkReady;
 
         if (flipActive) {
-          // FLIP transition: navigate directly, no view-transition CSS
-          flushSync(() => { navigate(path); });
+          // FLIP transition: navigate without flushSync so the browser
+          // can paint the overlay before processing the DOM swap
+          navigate(path);
           window.scrollTo(0, 0);
         } else {
           // Standard view-transition with flushSync for synchronous DOM commit

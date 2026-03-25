@@ -1,5 +1,6 @@
 // Seamless transition between homepage slider and project hero.
-// The overlay is created before navigation and animated on the project page.
+// Uses img.decode() to guarantee the overlay image is ready to paint
+// before hiding the canvas. Morphs on Home, navigates when done.
 
 import gsap from 'gsap';
 
@@ -11,59 +12,74 @@ export interface HeroTransitionData {
 let pending: HeroTransitionData | null = null;
 let overlayEl: HTMLDivElement | null = null;
 
-/** Call before navigation: stores data + creates a fixed overlay at the slide position. */
-export function prepareHeroTransition(data: HeroTransitionData) {
+/** Decode image, create overlay, hide canvas, morph to hero, call onReady. */
+export function startHeroTransition(
+  data: HeroTransitionData,
+  onReady: () => void,
+) {
   cleanup();
   pending = data;
 
-  const el = document.createElement('div');
-  el.className = 'hero-transition-overlay';
-  el.style.cssText = `
-    position: fixed;
-    z-index: 9999;
-    top: ${data.rect.y}px;
-    left: ${data.rect.x}px;
-    width: ${data.rect.width}px;
-    height: ${data.rect.height}px;
-    background-image: url(${data.imageUrl});
-    background-size: cover;
-    background-position: center;
-    pointer-events: none;
-    will-change: top, left, width, height;
-  `;
-  document.body.appendChild(el);
-  overlayEl = el;
-}
+  // Decode image first so the overlay paints instantly (no blank frame)
+  const img = new Image();
+  img.src = data.imageUrl;
+  img.decode().then(() => {
+    if (!pending) return; // cancelled
 
-/** Call on project page mount: animates overlay → hero bounds, then removes it. */
-export function animateHeroTransition(heroBounds: DOMRect, targetEl?: HTMLElement): Promise<void> {
-  if (!overlayEl || !pending) { cleanup(); return Promise.resolve(); }
+    const r = data.rect;
+    const el = document.createElement('div');
+    el.className = 'hero-transition-overlay';
+    el.style.cssText = `
+      position: fixed;
+      z-index: 9999;
+      top: ${r.y}px;
+      left: ${r.x}px;
+      width: ${r.width}px;
+      height: ${r.height}px;
+      background-image: url(${data.imageUrl});
+      background-size: cover;
+      background-position: center;
+      pointer-events: none;
+      will-change: top, left, width, height;
+    `;
+    document.body.appendChild(el);
+    overlayEl = el;
 
-  if (targetEl) targetEl.style.visibility = 'hidden';
+    // Now safe to hide the canvas — overlay is painted
+    const canvas = document.querySelector('.ogl-canvas canvas') as HTMLElement | null;
+    if (canvas) canvas.style.opacity = '0';
 
-  return new Promise((resolve) => {
-    gsap.to(overlayEl!, {
-      top: heroBounds.y,
-      left: heroBounds.x,
-      width: heroBounds.width,
-      height: heroBounds.height,
+    // Morph to hero position
+    const padding = Math.min(window.innerWidth * 0.03, 48);
+    const heroWidth = window.innerWidth - padding * 2;
+    const heroHeight = Math.min(Math.max(300, window.innerHeight * 0.6), 800);
+
+    gsap.to(el, {
+      top: padding,
+      left: padding,
+      width: heroWidth,
+      height: heroHeight,
       duration: 0.7,
       ease: 'power3.inOut',
-      onComplete: () => {
-        if (targetEl) targetEl.style.visibility = 'visible';
-        cleanup();
-        resolve();
-      },
+      onComplete: onReady,
     });
+  }).catch(() => {
+    // Decode failed — navigate anyway
+    onReady();
   });
 }
 
-/** Check if a transition is pending. */
-export function hasPendingTransition(): boolean {
-  return pending !== null;
+/** Called on project page mount: remove overlay (hero is behind it). */
+export function finishHeroTransition(targetEl?: HTMLElement) {
+  if (!overlayEl) return;
+  if (targetEl) targetEl.style.visibility = 'visible';
+  cleanup();
 }
 
-/** Get the image URL used in the transition (for the target to match). */
+export function hasPendingTransition(): boolean {
+  return pending !== null || overlayEl !== null;
+}
+
 export function getTransitionImageUrl(): string | null {
   return pending?.imageUrl ?? null;
 }
@@ -73,5 +89,7 @@ function cleanup() {
     overlayEl.remove();
     overlayEl = null;
   }
+  const canvas = document.querySelector('.ogl-canvas canvas') as HTMLElement | null;
+  if (canvas) canvas.style.opacity = '';
   pending = null;
 }
