@@ -22,53 +22,48 @@
   right: 0;
   height: 1px;
   background: rgba(0, 0, 0, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.slider-overlay__crosshair-title {
-  position: absolute;
-  right: 0;
-  transform: translateY(-50%);
-  padding: 4px 12px 4px 16px;
-  background: #fff;
-  font-family: var(--font-secondary);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: rgba(0, 0, 0, 0.45);
-  white-space: nowrap;
 }
 
 // ---------- Info panel (right) ----------
 .slider-overlay__panel {
   background: #fff;
+  position: relative;
   color: #111;
   display: flex;
   flex-direction: column;
   pointer-events: none;
   padding: 0;
   border-left: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: visible;
 }
 
 .slider-overlay__panel-content {
   flex: 1;
   display: flex;
   align-items: center;
-  padding: 48px;
+  padding: 48px 0;
+  padding-bottom: 15%;
+  overflow: visible;
 }
 
 .slider-overlay__panel-inner {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
 }
 
+
+
 .slider-overlay__category {
+  position: absolute;
+  top: 3vw;
+  left: 3vw;
   @include text-2xs;
   font-family: var(--font-secondary);
   letter-spacing: 0.15em;
-  opacity: 0.5;
+  color: #111;
+  text-transform: uppercase;
 }
 
 .slider-overlay__title {
@@ -78,6 +73,20 @@
   letter-spacing: -0.02em;
   line-height: 0.9;
   margin: 0;
+  position: relative;
+}
+
+.slider-overlay__title-line1 {
+  // Right edge flush with panel left border, slight offset for staggered look
+  position: absolute;
+  right: calc(100% - 0.3em);
+  bottom: calc(100% + 0.15em);
+  white-space: nowrap;
+}
+
+.slider-overlay__title-line2 {
+  display: block;
+  white-space: nowrap;
 }
 
 .slider-overlay__subtitle {
@@ -90,12 +99,83 @@
 }
 
 .slider-overlay__counter {
+  position: absolute;
+  bottom: 3vw;
+  left: 3vw;
   font-family: var(--font-secondary);
   font-size: 11px;
   letter-spacing: 0.1em;
-  opacity: 0.35;
+  color: #111;
   font-variant-numeric: tabular-nums;
-  margin-top: 16px;
+}
+
+// ---------- Filters (top of sidebar, in flex flow) ----------
+.slider-overlay__filters {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 24px;
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+
+.slider-overlay__filter {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-secondary);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 0, 0, 0.25);
+  transition: color 0.3s;
+  white-space: nowrap;
+
+  &:hover {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  &--active {
+    color: #111;
+  }
+
+}
+
+// ---------- Mode toggle (in flex flow, above minimap) ----------
+.slider-overlay__mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 16px 24px;
+  cursor: pointer;
+  pointer-events: auto;
+  font-family: var(--font-secondary);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 0, 0, 0.25);
+  transition: opacity 0.3s;
+  flex-shrink: 0;
+
+  &:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  span {
+    transition: color 0.3s;
+  }
+
+  .is-active {
+    color: #111;
+  }
+}
+
+.slider-overlay__mode-divider {
+  color: rgba(0, 0, 0, 0.15);
 }
 
 // ---------- Minimap (bottom of panel, infinite horizontal) ----------

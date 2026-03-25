@@ -8,8 +8,6 @@ import SEO from '../components/SEO';
 import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
-import ModeToggle from '../components/home/ModeToggle';
-import CategoryFilter from '../components/home/CategoryFilter';
 import { lenisService } from '../services/lenisService';
 import { localizedPath } from '../i18n/routes';
 import type { ViewMode } from '../types';
@@ -161,6 +159,12 @@ const Home = () => {
               currentIndex={currentIndex}
               projects={filteredProjects}
               onJumpTo={handleJumpTo}
+              categories={categories}
+              activeCategory={activeCategory}
+              lang={currentLang as 'fr' | 'en'}
+              onFilter={handleCategoryFilter}
+              viewMode={viewMode}
+              onToggleMode={handleToggleMode}
             />
 
             <GridOverlay
@@ -168,17 +172,6 @@ const Home = () => {
               hoveredSlug={hoveredSlug}
               projects={filteredProjects}
             />
-
-            {categories.length > 0 && (
-              <CategoryFilter
-                categories={categories}
-                activeSlug={activeCategory}
-                lang={currentLang as 'fr' | 'en'}
-                onFilter={handleCategoryFilter}
-              />
-            )}
-
-            <ModeToggle viewMode={viewMode} onToggle={handleToggleMode} />
           </>
         )}
 
