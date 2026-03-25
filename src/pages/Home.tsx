@@ -88,7 +88,7 @@ const Home = () => {
   const handleNavigate = useCallback(
     (slug: string) => {
       const project = filteredProjects.find(p => p.slug === slug);
-      const canvasEl = document.querySelector('.ogl-canvas') as any;
+      const canvasEl = document.querySelector('.ogl-canvas-handle') as any;
       const rect = canvasEl?.__getRevealedScreenRect?.() as DOMRect | null;
       const imageUrl = project?.heroImageFull ?? project?.heroImage;
 
@@ -101,7 +101,7 @@ const Home = () => {
   );
 
   const handleJumpTo = useCallback((index: number) => {
-    const canvasEl = document.querySelector('.ogl-canvas') as any;
+    const canvasEl = document.querySelector('.ogl-canvas-handle') as any;
     if (canvasEl?.__jumpTo) {
       canvasEl.__jumpTo(index);
     }

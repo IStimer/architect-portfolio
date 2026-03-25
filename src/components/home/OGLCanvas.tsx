@@ -1,6 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { useOGLRenderer } from '../../hooks/useOGLRenderer';
-import { useTextureManager } from '../../hooks/useTextureManager';
+import { useOGLCanvas } from '../../contexts/OGLCanvasContext';
 import { useSliderMode } from '../../hooks/useSliderMode';
 import { useInfiniteGridMode } from '../../hooks/useInfiniteGridMode';
 import { useTransitionController } from '../../hooks/useTransitionController';
@@ -45,20 +44,19 @@ const OGLCanvas = ({
   openingActive = false,
   onOpeningComplete,
 }: OGLCanvasProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
   const jumpToRef = useRef<((index: number) => void) | null>(null);
   const sliderHandleRef = useRef<SliderModeHandle | null>(null);
-  const { getContext, ready } = useOGLRenderer(containerRef);
 
-  const gl = ready ? getContext()?.gl ?? null : null;
-
+  // Canvas, renderer, textures come from the persistent context
   const {
+    canvasReady: ready,
+    getContext,
     textures,
-    loaded: texturesLoaded,
+    texturesLoaded,
     markVisible,
     requestFull,
     getTier,
-  } = useTextureManager(gl, allProjects);
+  } = useOGLCanvas();
 
   // Opening animation
   const openingHandle = useOpeningAnimation({
@@ -167,7 +165,9 @@ const OGLCanvas = ({
   const anchor = transitionHandle.getGridScrollAnchor();
   if (anchor) gridScrollAnchorRef.current = anchor;
 
-  // Expose jumpTo for parent
+  // Expose jumpTo + getRevealedScreenRect for parent via DOM
+  const exposedRef = useRef<HTMLDivElement>(null);
+
   const handleJumpTo = useCallback((index: number) => {
     jumpToRef.current?.(index);
   }, []);
@@ -176,10 +176,9 @@ const OGLCanvas = ({
     return sliderHandle.getRevealedScreenRect();
   }, [sliderHandle]);
 
-  // Attach to ref so parent can call it (via imperative handle pattern)
-  const containerCallbackRef = useCallback(
+  const callbackRef = useCallback(
     (node: HTMLDivElement | null) => {
-      (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      (exposedRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
       if (node) {
         (node as any).__jumpTo = handleJumpTo;
         (node as any).__getRevealedScreenRect = getRevealedScreenRect;
@@ -188,7 +187,8 @@ const OGLCanvas = ({
     [handleJumpTo, getRevealedScreenRect]
   );
 
-  return <div ref={containerCallbackRef} className="ogl-canvas" />;
+  // Invisible anchor div for imperative handle pattern (canvas is now in the context provider)
+  return <div ref={callbackRef} className="ogl-canvas-handle" style={{ display: 'none' }} />;
 };
 
 export default OGLCanvas;
