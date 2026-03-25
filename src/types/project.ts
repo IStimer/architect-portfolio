@@ -60,6 +60,7 @@ export interface ProjectData {
   githubUrl?: string;
   keyMetric?: ProjectKeyMetric;
   heroImage?: string;
+  heroImageFull?: string;
   footerImage?: string;
   category?: string;
   editorialContent?: ContentBlock[];

@@ -22,6 +22,7 @@ interface OGLCanvasProps {
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
+  onReveal: (slug: string) => void;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
   onFilterDezoomComplete: () => void;
   openingActive?: boolean;
@@ -40,6 +41,7 @@ const OGLCanvas = ({
   onIndexChange,
   onHover,
   onNavigate,
+  onReveal,
   onTransitionComplete,
   onFilterDezoomComplete,
   openingActive = false,
@@ -57,6 +59,7 @@ const OGLCanvas = ({
     loaded: texturesLoaded,
     markVisible,
     requestFull,
+    requestHero,
     getTier,
   } = useTextureManager(gl, allProjects);
 
@@ -110,9 +113,11 @@ const OGLCanvas = ({
     currentIndex,
     onIndexChange,
     onNavigate,
+    onReveal,
     jumpToRef,
     markVisible,
     requestFull,
+    requestHero,
     getTier,
     initialMeshes: handoffSlides ?? filterHandoffSlides ?? undefined,
   });
@@ -172,15 +177,20 @@ const OGLCanvas = ({
     jumpToRef.current?.(index);
   }, []);
 
+  const getRevealedScreenRect = useCallback(() => {
+    return sliderHandle.getRevealedScreenRect();
+  }, [sliderHandle]);
+
   // Attach to ref so parent can call it (via imperative handle pattern)
   const containerCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
       (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
       if (node) {
         (node as any).__jumpTo = handleJumpTo;
+        (node as any).__getRevealedScreenRect = getRevealedScreenRect;
       }
     },
-    [handleJumpTo]
+    [handleJumpTo, getRevealedScreenRect]
   );
 
   return <div ref={containerCallbackRef} className="ogl-canvas" />;

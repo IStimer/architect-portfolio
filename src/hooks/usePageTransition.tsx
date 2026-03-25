@@ -4,6 +4,7 @@ import { flushSync } from "react-dom";
 import gsap from "gsap";
 import { startPageTransition } from "../utils/viewTransitions";
 import { prefersReducedMotion } from "../utils/prefersReducedMotion";
+import { hasPendingTransition } from "../services/heroTransition";
 
 // ---------------------------------------------------------------------------
 // Chunk preloaders — Vite deduplicates identical dynamic import() calls
@@ -60,34 +61,45 @@ export const usePageTransition = () => {
           ? chunkPreloaders[routeChunk]().catch(() => {})
           : Promise.resolve();
 
-        // ----- Fadeout animation -----
+        const flipActive = hasPendingTransition();
         const reduced = prefersReducedMotion();
 
+        // ----- Fadeout animation -----
         if (!reduced) {
           const pageContent = document.querySelector(".page-content");
           const customCursor = document.querySelector(".custom-cursor");
+          // FLIP: fast fadeout (overlay stays visible on top)
+          const fadeDur = flipActive ? 0.15 : TIMINGS.CONTENT_FADE;
 
           const tl = gsap.timeline();
           if (pageContent)
-            tl.to(pageContent, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
+            tl.to(pageContent, { opacity: 0, duration: fadeDur, ease: EASE }, 0);
           if (customCursor)
-            tl.to(customCursor, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
+            tl.to(customCursor, { opacity: 0, duration: fadeDur, ease: EASE }, 0);
 
           await tl.then();
-          await new Promise<void>((r) =>
-            gsap.delayedCall(TIMINGS.PRE_TRANSITION, r),
-          );
+          if (!flipActive) {
+            await new Promise<void>((r) =>
+              gsap.delayedCall(TIMINGS.PRE_TRANSITION, r),
+            );
+          }
         }
 
         // ----- Wait for chunk to be ready -----
         await chunkReady;
 
-        // View-transition with flushSync for synchronous DOM commit
-        await startPageTransition(() => {
-          flushSync(() => {
-            navigate(path);
+        if (flipActive) {
+          // FLIP transition: navigate directly, no view-transition CSS
+          flushSync(() => { navigate(path); });
+          window.scrollTo(0, 0);
+        } else {
+          // Standard view-transition with flushSync for synchronous DOM commit
+          await startPageTransition(() => {
+            flushSync(() => {
+              navigate(path);
+            });
           });
-        });
+        }
 
         // Restore cursor for the new page
         const cursorAfter = document.querySelector(".custom-cursor");

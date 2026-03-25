@@ -1,9 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { ProjectData } from '../../types';
-import { useProgressiveBackground } from '../../hooks/useProgressiveBackground';
-import { useProjectHeroAnimation } from '../../hooks/useProjectHeroAnimation';
-import useMatchMedia from '../../hooks/useMatchMedia';
-import FitWords from '../ui/FitWords';
+import { hasPendingTransition, animateHeroTransition, getTransitionImageUrl } from '../../services/heroTransition';
 
 interface ProjectHeroProps {
   project: ProjectData;
@@ -11,47 +8,38 @@ interface ProjectHeroProps {
   onBack: () => void;
 }
 
-export const ProjectHero = ({ project, totalProjects, onBack }: ProjectHeroProps) => {
-  const { style: heroBgStyle, isLoaded: heroImageLoaded } = useProgressiveBackground(project.heroImage);
-  const isMobile = useMatchMedia('(max-width: 767px)');
+export const ProjectHero = ({ project, onBack }: ProjectHeroProps) => {
+  const hasFlip = hasPendingTransition();
+  const [flipDone, setFlipDone] = useState(!hasFlip);
+  // Use the exact same URL as the overlay to avoid any reload/flash
+  const heroUrl = useRef(getTransitionImageUrl() ?? project.heroImage).current;
+  const targetRef = useRef<HTMLDivElement>(null);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const subtitleRef = useRef<HTMLParagraphElement>(null);
-
-  useProjectHeroAnimation({
-    containerRef,
-    titleRef,
-    subtitleRef,
-    heroImageLoaded,
-    projectId: project.id,
-    projectSlug: project.slug,
-    isMobile,
-  });
+  // FLIP: animate overlay from slider position → hero target area
+  useEffect(() => {
+    if (flipDone || !targetRef.current) return;
+    const el = targetRef.current;
+    const heroBounds = el.getBoundingClientRect();
+    animateHeroTransition(heroBounds, el).then(() => setFlipDone(true));
+  }, [flipDone]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`project-hero${project.heroImage ? ' project-hero--has-image' : ''}`}
-    >
+    <div className="project-hero">
       <div
-        className="project-hero__background"
-        style={heroBgStyle}
+        ref={targetRef}
+        className="project-hero__target"
+        style={{
+          ...(heroUrl ? {
+            backgroundImage: `url(${heroUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : {}),
+        }}
       />
-
       <div className="project-hero__header">
         <button className="project-hero__back" onClick={onBack}>
           &larr;
         </button>
-        <div className="project-hero__counter">
-          {String(project.id).padStart(2, '0')} — {String(totalProjects).padStart(2, '0')}
-        </div>
-      </div>
-
-      <div className="project-hero__center">
-        <h1 ref={titleRef} className="project-hero__title project-hero__title--fit">
-          <FitWords text={project.title} className="project-hero__title-word" splitWords={!isMobile ? false : undefined} />
-        </h1>
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
 import { lenisService } from '../services/lenisService';
+import { prepareHeroTransition } from '../services/heroTransition';
 import { localizedPath } from '../i18n/routes';
 import type { ViewMode } from '../types';
 import '../styles/pages/Home.scss';
@@ -84,11 +85,29 @@ const Home = () => {
     setHoveredSlug(slug);
   }, []);
 
+  // Preload full-quality hero in browser cache when a slide is revealed
+  const handleReveal = useCallback(
+    (slug: string) => {
+      const project = filteredProjects.find(p => p.slug === slug);
+      const url = project?.heroImageFull ?? project?.heroImage;
+      if (url) { const img = new Image(); img.src = url; }
+    },
+    [filteredProjects]
+  );
+
   const handleNavigate = useCallback(
     (slug: string) => {
+      const project = filteredProjects.find(p => p.slug === slug);
+      const canvasEl = document.querySelector('.ogl-canvas') as any;
+      const rect = canvasEl?.__getRevealedScreenRect?.() as DOMRect | null;
+      const imageUrl = project?.heroImageFull ?? project?.heroImage;
+
+      if (imageUrl && rect) {
+        prepareHeroTransition({ imageUrl, rect });
+      }
       navigateTo('project', { slug });
     },
-    [navigateTo]
+    [navigateTo, filteredProjects]
   );
 
   const handleJumpTo = useCallback((index: number) => {
@@ -146,6 +165,7 @@ const Home = () => {
           onIndexChange={handleIndexChange}
           onHover={handleHover}
           onNavigate={handleNavigate}
+          onReveal={handleReveal}
           onTransitionComplete={handleTransitionComplete}
           onFilterDezoomComplete={handleFilterDezoomComplete}
           openingActive={openingActive}

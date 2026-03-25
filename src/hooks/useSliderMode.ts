@@ -32,9 +32,11 @@ interface SliderModeProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onNavigate: (slug: string) => void;
+  onReveal: (slug: string) => void;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
+  requestHero?: (slug: string) => void;
   getTier?: (slug: string) => TextureTier;
   initialMeshes?: SlideData[];
 }
@@ -47,6 +49,7 @@ export interface SliderModeHandle {
   getTotalHeight: () => number;
   getScroll: () => number;
   takeOwnership: () => SlideData[];
+  getRevealedScreenRect: () => DOMRect | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -76,9 +79,11 @@ export const useSliderMode = ({
   currentIndex,
   onIndexChange,
   onNavigate,
+  onReveal,
   jumpToRef,
   markVisible,
   requestFull,
+  requestHero,
   getTier,
   initialMeshes,
 }: SliderModeProps): SliderModeHandle => {
@@ -544,6 +549,13 @@ export const useSliderMode = ({
       revealStartTimeRef.current = performance.now();
       revealDurationRef.current = duration;
       revealTargetScaleRef.current = target;
+
+      // Upgrade texture to hero quality (2400px with mipmaps)
+      const slug = slides.find((s) => s.projectIndex === projectIndex)?.slug;
+      if (slug) {
+        requestHero?.(slug);
+        onReveal(slug);
+      }
     }
 
     function startCollapse(slide: SlideData) {
@@ -766,7 +778,7 @@ export const useSliderMode = ({
       raycastRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, jumpTo, markVisible, requestFull, getTier]);
+  }, [active, texturesLoaded, getContext, projects, textures, onIndexChange, onNavigate, onReveal, jumpTo, markVisible, requestFull, requestHero, getTier]);
 
   // ── Resize ──
   useEffect(() => {
@@ -817,6 +829,29 @@ export const useSliderMode = ({
     getRenderTarget: () => renderTargetRef.current,
     getTotalHeight: () => totalHeightRef.current,
     getScroll: () => scrollRef.current,
+    getRevealedScreenRect: () => {
+      if (!revealedRef.current) return null;
+      const ctx = getContext();
+      if (!ctx) return null;
+      const slide = slidesRef.current.find((s) => s.projectIndex === revealedIndexRef.current);
+      if (!slide) return null;
+
+      const { viewport } = ctx;
+      const cw = window.innerWidth;
+      const ch = window.innerHeight;
+      const meshX = slide.mesh.position.x as number;
+      const meshY = slide.mesh.position.y as number;
+      const meshW = slide.mesh.scale.x as number;
+      const meshH = slide.mesh.scale.y as number;
+
+      // World → screen: world origin = screen center
+      const screenX = ((meshX - meshW / 2 + viewport.width / 2) / viewport.width) * cw;
+      const screenY = ((viewport.height / 2 - meshY - meshH / 2) / viewport.height) * ch;
+      const screenW = (meshW / viewport.width) * cw;
+      const screenH = (meshH / viewport.height) * ch;
+
+      return new DOMRect(screenX, screenY, screenW, screenH);
+    },
     takeOwnership: () => {
       revealingRef.current = false;
       revealedRef.current = false;

@@ -27,6 +27,7 @@ export const enum TextureTier {
   LQIP = 1,
   THUMBNAIL = 2,
   FULL = 3,
+  HERO = 4,
 }
 
 interface SlotMeta {
@@ -44,6 +45,7 @@ const GPU_BUDGET_BYTES = 150 * 1024 * 1024; // ~150 MB
 // Rough estimate: width * height * 4 (RGBA)
 const THUMB_GPU = 600 * 450 * 4;  // ~1.08 MB
 const FULL_GPU = 1200 * 900 * 4;  // ~4.32 MB
+const HERO_GPU = 2400 * 1600 * 4; // ~15.36 MB
 const LQIP_GPU = 16 * 16 * 4;    // ~1 KB
 
 // ── Placeholder ─────────────────────────────────────────────────
@@ -74,6 +76,9 @@ function decodeLqip(base64: string): Promise<HTMLImageElement> {
 // ── Helpers ─────────────────────────────────────────────────────
 
 function getImageUrl(project: ProjectData, tier: TextureTier): string | null {
+  if (tier === TextureTier.HERO) {
+    return project.heroImageFull ?? project.heroImage ?? null;
+  }
   if (tier === TextureTier.THUMBNAIL) {
     return project.thumbnailUrl ?? project.heroImage ?? null;
   }
@@ -84,6 +89,7 @@ function getImageUrl(project: ProjectData, tier: TextureTier): string | null {
 }
 
 function gpuForTier(tier: TextureTier): number {
+  if (tier === TextureTier.HERO) return HERO_GPU;
   if (tier === TextureTier.FULL) return FULL_GPU;
   if (tier === TextureTier.THUMBNAIL) return THUMB_GPU;
   return LQIP_GPU;
@@ -283,10 +289,11 @@ export function useTextureManager(
       const url = getImageUrl(project, tier);
       if (!url) return;
 
-      const priority = tier === TextureTier.FULL ? LoadPriority.HOVER : LoadPriority.VISIBLE;
+      const priority = tier === TextureTier.HERO ? LoadPriority.HOVER
+        : tier === TextureTier.FULL ? LoadPriority.HOVER
+        : LoadPriority.VISIBLE;
 
       meta.loading = tier;
-
       const { promise } = enqueueLoad(slug, url, priority);
       promise
         .then((img) => {
@@ -350,6 +357,16 @@ export function useTextureManager(
     [requestTier],
   );
 
+  // ── Request hero-res (2400px, for reveal/expand) ─────────────
+  const requestHero = useCallback(
+    (slug: string) => {
+      const meta = metaRef.current.get(slug);
+      if (meta) meta.lastAccess = performance.now();
+      requestTier(slug, TextureTier.HERO);
+    },
+    [requestTier],
+  );
+
   // ── Get current tier for a slug ───────────────────────────────
   const getTier = useCallback((slug: string): TextureTier => {
     return metaRef.current.get(slug)?.tier ?? TextureTier.NONE;
@@ -367,6 +384,7 @@ export function useTextureManager(
     loaded,
     markVisible,
     requestFull,
+    requestHero,
     requestTier,
     getTier,
   };

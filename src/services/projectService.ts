@@ -190,6 +190,7 @@ function mapProject(raw: SanityProject, lang: 'fr' | 'en'): ProjectData {
     subtitle: raw.subtitle?.[lang] ?? raw.subtitle?.fr ?? '',
     description: raw.description?.[lang] ?? raw.description?.fr ?? '',
     heroImage: hasImage ? buildImageUrl(raw.heroImage, 1200) : undefined,
+    heroImageFull: hasImage ? buildImageUrl(raw.heroImage, 2400) : undefined,
     heroImageUrl: hasImage ? buildImageUrl(raw.heroImage, 1200) : undefined,
     thumbnailUrl: hasImage ? buildImageUrl(raw.heroImage, 600) : undefined,
     lqipBase64: raw.heroImage?.asset?.metadata?.lqip ?? undefined,
