@@ -1,9 +1,26 @@
-// Seamless transition between homepage slider and project hero.
-// Uses img.decode() to guarantee the overlay image is ready to paint
-// before hiding the canvas. Morphs on Home, navigates when done.
+// Seamless transitions between homepage slider and project hero.
+// Forward: slide → hero (morph on Home, then navigate)
+// Reverse: hero → slide (morph on Project, then navigate back)
 
 import gsap from 'gsap';
 
+// ── Constants ──────────────────────────────────────────────────
+const MORPH_DURATION = 0.7;
+const MORPH_EASE = 'power3.inOut';
+const REVERSE_FADE_DELAY = 0.3;
+const REVERSE_FADE_DURATION = 0.4;
+
+// Slider layout (must match useSliderMode.ts)
+const SLIDE_SIZE_FRAC = 0.35;
+const PANEL_FRAC = 0.25;
+
+// Camera (must match useOGLRenderer.ts)
+const CAMERA_FOV = 45;
+const CAMERA_Z = 5;
+
+const CANVAS_SELECTOR = '.ogl-canvas canvas';
+
+// ── State ──────────────────────────────────────────────────────
 export interface HeroTransitionData {
   imageUrl: string;
   rect: DOMRect;
@@ -11,77 +28,67 @@ export interface HeroTransitionData {
 
 let pending: HeroTransitionData | null = null;
 let overlayEl: HTMLDivElement | null = null;
+let currentDirection: 'forward' | 'reverse' | null = null;
 
-/** Decode image, create overlay, hide canvas, morph to hero, call onReady. */
-export function startHeroTransition(
-  data: HeroTransitionData,
-  onReady: () => void,
-) {
-  cleanup();
-  pending = data;
+// ── Helpers ────────────────────────────────────────────────────
 
-  // Decode image first so the overlay paints instantly (no blank frame)
+function createOverlay(imageUrl: string, rect: DOMRect): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'hero-transition-overlay';
+  el.style.cssText = `
+    position: fixed;
+    z-index: 9999;
+    top: ${rect.y}px;
+    left: ${rect.x}px;
+    width: ${rect.width}px;
+    height: ${rect.height}px;
+    background-image: url(${imageUrl});
+    background-size: cover;
+    background-position: center;
+    pointer-events: none;
+    will-change: top, left, width, height;
+  `;
+  document.body.appendChild(el);
+  return el;
+}
+
+function getHeroTargetRect(): { top: number; left: number; width: number; height: number } {
+  const padding = Math.min(window.innerWidth * 0.03, 48);
+  return {
+    top: padding,
+    left: padding,
+    width: window.innerWidth - padding * 2,
+    height: Math.min(Math.max(300, window.innerHeight * 0.6), 800),
+  };
+}
+
+function getSlideTargetRect(): { top: number; left: number; width: number; height: number } {
+  const cw = window.innerWidth;
+  const ch = window.innerHeight;
+  const fovRad = (CAMERA_FOV * Math.PI) / 180;
+  const vpH = 2 * Math.tan(fovRad / 2) * CAMERA_Z;
+  const vpW = vpH * (cw / ch);
+
+  const slideSize = SLIDE_SIZE_FRAC * vpH;
+  const centerX = -(vpW * PANEL_FRAC) / 2;
+
+  return {
+    left: ((centerX - slideSize / 2 + vpW / 2) / vpW) * cw,
+    top: ((vpH / 2 - slideSize / 2) / vpH) * ch,
+    width: (slideSize / vpW) * cw,
+    height: (slideSize / vpH) * ch,
+  };
+}
+
+function setCanvasVisible(visible: boolean) {
+  const canvas = document.querySelector(CANVAS_SELECTOR) as HTMLElement | null;
+  if (canvas) canvas.style.opacity = visible ? '' : '0';
+}
+
+function decodeImage(url: string): Promise<void> {
   const img = new Image();
-  img.src = data.imageUrl;
-  img.decode().then(() => {
-    if (!pending) return; // cancelled
-
-    const r = data.rect;
-    const el = document.createElement('div');
-    el.className = 'hero-transition-overlay';
-    el.style.cssText = `
-      position: fixed;
-      z-index: 9999;
-      top: ${r.y}px;
-      left: ${r.x}px;
-      width: ${r.width}px;
-      height: ${r.height}px;
-      background-image: url(${data.imageUrl});
-      background-size: cover;
-      background-position: center;
-      pointer-events: none;
-      will-change: top, left, width, height;
-    `;
-    document.body.appendChild(el);
-    overlayEl = el;
-
-    // Now safe to hide the canvas — overlay is painted
-    const canvas = document.querySelector('.ogl-canvas canvas') as HTMLElement | null;
-    if (canvas) canvas.style.opacity = '0';
-
-    // Morph to hero position
-    const padding = Math.min(window.innerWidth * 0.03, 48);
-    const heroWidth = window.innerWidth - padding * 2;
-    const heroHeight = Math.min(Math.max(300, window.innerHeight * 0.6), 800);
-
-    gsap.to(el, {
-      top: padding,
-      left: padding,
-      width: heroWidth,
-      height: heroHeight,
-      duration: 0.7,
-      ease: 'power3.inOut',
-      onComplete: onReady,
-    });
-  }).catch(() => {
-    // Decode failed — navigate anyway
-    onReady();
-  });
-}
-
-/** Called on project page mount: remove overlay (hero is behind it). */
-export function finishHeroTransition(targetEl?: HTMLElement) {
-  if (!overlayEl) return;
-  if (targetEl) targetEl.style.visibility = 'visible';
-  cleanup();
-}
-
-export function hasPendingTransition(): boolean {
-  return pending !== null || overlayEl !== null;
-}
-
-export function getTransitionImageUrl(): string | null {
-  return pending?.imageUrl ?? null;
+  img.src = url;
+  return img.decode();
 }
 
 function cleanup() {
@@ -89,7 +96,83 @@ function cleanup() {
     overlayEl.remove();
     overlayEl = null;
   }
-  const canvas = document.querySelector('.ogl-canvas canvas') as HTMLElement | null;
-  if (canvas) canvas.style.opacity = '';
+  setCanvasVisible(true);
   pending = null;
+  currentDirection = null;
+}
+
+// ── Forward: slide → hero ──────────────────────────────────────
+
+export function startHeroTransition(data: HeroTransitionData, onReady: () => void) {
+  cleanup();
+  pending = data;
+  currentDirection = 'forward';
+
+  decodeImage(data.imageUrl).then(() => {
+    if (!pending) return;
+
+    overlayEl = createOverlay(data.imageUrl, data.rect);
+    setCanvasVisible(false);
+
+    gsap.to(overlayEl, {
+      ...getHeroTargetRect(),
+      duration: MORPH_DURATION,
+      ease: MORPH_EASE,
+      onComplete: onReady,
+    });
+  }).catch(() => onReady());
+}
+
+export function finishHeroTransition(targetEl?: HTMLElement) {
+  if (!overlayEl) return;
+  if (targetEl) targetEl.style.visibility = 'visible';
+  cleanup();
+}
+
+// ── Reverse: hero → slide ──────────────────────────────────────
+
+export function startReverseTransition(imageUrl: string, heroEl: HTMLElement, onReady: () => void) {
+  cleanup();
+  currentDirection = 'reverse';
+
+  const heroBounds = heroEl.getBoundingClientRect();
+
+  decodeImage(imageUrl).then(() => {
+    if (currentDirection !== 'reverse') return;
+
+    overlayEl = createOverlay(imageUrl, heroBounds);
+    heroEl.style.visibility = 'hidden';
+
+    gsap.to(overlayEl, {
+      ...getSlideTargetRect(),
+      duration: MORPH_DURATION,
+      ease: MORPH_EASE,
+      onComplete: onReady,
+    });
+  }).catch(() => onReady());
+}
+
+export function finishReverseTransition() {
+  if (!overlayEl) return;
+  gsap.to(overlayEl, {
+    opacity: 0,
+    duration: REVERSE_FADE_DURATION,
+    delay: REVERSE_FADE_DELAY,
+    ease: 'power2.out',
+    onComplete: cleanup,
+  });
+}
+
+// ── Queries ────────────────────────────────────────────────────
+
+export function hasPendingTransition(): boolean {
+  return pending !== null || overlayEl !== null;
+}
+
+export function getTransitionDirection(): 'forward' | 'reverse' | null {
+  return currentDirection;
+}
+
+export function getTransitionImageUrl(): string | null {
+  return pending?.imageUrl ?? null;
 }

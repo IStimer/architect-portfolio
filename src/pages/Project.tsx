@@ -88,7 +88,6 @@ const Project = () => {
       <ProjectHero
         key={slug}
         project={project}
-        totalProjects={projects.length}
         onBack={() => navigateTo('home')}
       />
 

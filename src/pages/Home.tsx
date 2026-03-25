@@ -9,7 +9,7 @@ import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
 import { lenisService } from '../services/lenisService';
-import { startHeroTransition } from '../services/heroTransition';
+import { startHeroTransition, getTransitionDirection, finishReverseTransition } from '../services/heroTransition';
 import { preloadProjectChunk } from '../hooks/usePageTransition';
 import { localizedPath } from '../i18n/routes';
 import type { ViewMode } from '../types';
@@ -39,6 +39,18 @@ const Home = () => {
 
   // Prefetch Project page chunk on idle so first navigation is instant
   useEffect(() => { preloadProjectChunk(); }, []);
+
+  // Finish reverse transition (Project → Home) when canvas is ready
+  useEffect(() => {
+    if (getTransitionDirection() === 'reverse') {
+      // Small delay for canvas to render the first frame
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          finishReverseTransition();
+        });
+      });
+    }
+  }, []);
 
   // Filter projects by active category
   const filteredProjects = useMemo(() => {
