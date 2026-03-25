@@ -64,6 +64,13 @@
   letter-spacing: 0.15em;
   color: #111;
   text-transform: uppercase;
+  overflow: hidden;
+  display: block;
+  line-height: 1.2;
+
+  > span {
+    display: block;
+  }
 }
 
 .slider-overlay__title {
@@ -107,6 +114,26 @@
   letter-spacing: 0.1em;
   color: #111;
   font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.slider-overlay__digit {
+  display: inline-flex;
+  overflow: hidden;
+  position: relative;
+  width: 0.65em;
+  height: 1em;
+
+  > span {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    line-height: 1;
+  }
 }
 
 // ---------- Filters (top of sidebar, in flex flow) ----------
