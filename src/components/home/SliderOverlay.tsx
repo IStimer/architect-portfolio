@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { revealIn, revealOut } from '../../utils/revealText';
 import type { ProjectData, ViewMode } from '../../types';
@@ -20,8 +20,6 @@ interface SliderOverlayProps {
   onToggleMode: () => void;
 }
 
-const VISIBLE_THUMBS = 15;
-const HALF_VISIBLE = Math.floor(VISIBLE_THUMBS / 2);
 
 const SliderOverlay = ({
   active, revealed, revealComplete, revealBoundsRef, currentIndex, projects, onJumpTo,
@@ -30,8 +28,6 @@ const SliderOverlay = ({
 }: SliderOverlayProps) => {
   // ── Refs ──
   const containerRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const prevIndexRef = useRef(currentIndex);
 
   // Category animation
   const categoryRef = useRef<HTMLSpanElement>(null);
@@ -40,11 +36,19 @@ const SliderOverlay = ({
   const catHiddenRef = useRef(false);
   const catInitRef = useRef(false);
 
+  // Minimap animation on reveal
+  const minimapRef = useRef<HTMLDivElement>(null);
+  const minimapShownRef = useRef(false);
+
+  // Filters + toggle hide/show on reveal
+  const filtersRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
   // Title + subtitle animation on reveal
   const titleRef = useRef<HTMLHeadingElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const splitRefsRef = useRef<any[]>([]);
-  const prevRevealedRef = useRef(false);
+  const titleShownRef = useRef(false);
 
   // Counter digits animation (slot machine)
   const digitRefs = useRef<(HTMLSpanElement | null)[]>([null, null, null, null]);
@@ -55,15 +59,6 @@ const SliderOverlay = ({
   const project = projects[currentIndex];
   const total = projects.length;
 
-  const thumbWindow = useMemo(() => {
-    if (total === 0) return [];
-    const items: { realIndex: number; offset: number }[] = [];
-    for (let i = -HALF_VISIBLE; i <= HALF_VISIBLE; i++) {
-      const realIndex = ((currentIndex + i) % total + total) % total;
-      items.push({ realIndex, offset: i });
-    }
-    return items;
-  }, [currentIndex, total]);
 
   // Animate opacity when active changes OR when component first renders with active=true
   useEffect(() => {
@@ -75,27 +70,6 @@ const SliderOverlay = ({
     });
   }, [active]);
 
-  // Animate track position when currentIndex changes
-  useEffect(() => {
-    if (!trackRef.current) return;
-    const track = trackRef.current;
-    const prev = prevIndexRef.current;
-    prevIndexRef.current = currentIndex;
-
-    gsap.killTweensOf(track);
-
-    let delta = currentIndex - prev;
-    if (delta > total / 2) delta -= total;
-    if (delta < -total / 2) delta += total;
-
-    if (delta !== 0) {
-      const thumbWidth = 52;
-      gsap.fromTo(track,
-        { x: -delta * thumbWidth },
-        { x: 0, duration: 0.5, ease: 'power2.out' }
-      );
-    }
-  }, [currentIndex, total]);
 
   // Animate category: text managed via ref, not React
   useEffect(() => {
@@ -140,6 +114,105 @@ const SliderOverlay = ({
     }
   }, [currentIndex, project]);
 
+  // Filters, toggle, minimap — single coordinated effect on revealed
+  const filtersSplitRef = useRef<any[]>([]);
+  const toggleSplitRef = useRef<any[]>([]);
+  const collapseTimelineRef = useRef<gsap.core.Timeline | null>(null);
+
+  // REVEAL → filters/toggle out, minimap in (on revealComplete)
+  useEffect(() => {
+    const filters = filtersRef.current;
+    const toggle = toggleRef.current;
+    if (!filters || !toggle || !revealed) return;
+
+    if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
+
+    filtersSplitRef.current.forEach((s) => s.revert());
+    toggleSplitRef.current.forEach((s) => s.revert());
+    filtersSplitRef.current = [];
+    toggleSplitRef.current = [];
+
+    const buttons = filters.querySelectorAll('.slider-overlay__filter');
+    buttons.forEach((btn, i) => {
+      gsap.delayedCall(i * 0.04, () => {
+        const { split } = revealOut(btn as HTMLElement, { duration: 0.3 });
+        filtersSplitRef.current.push(split);
+      });
+    });
+    filters.style.pointerEvents = 'none';
+
+    const { split: s2 } = revealOut(toggle, { duration: 0.3 });
+    toggleSplitRef.current = [s2];
+    toggle.style.pointerEvents = 'none';
+  }, [revealed]);
+
+  // Minimap IN on revealComplete
+  useEffect(() => {
+    const el = minimapRef.current;
+    if (!el || !revealComplete || minimapShownRef.current) return;
+    minimapShownRef.current = true;
+
+    const thumbs = el.querySelectorAll('.slider-overlay__thumb');
+    if (!thumbs.length) return;
+    gsap.killTweensOf(thumbs);
+    el.style.visibility = 'visible';
+    el.style.pointerEvents = 'auto';
+    gsap.set(thumbs, { xPercent: 100 });
+    gsap.to(thumbs, { xPercent: 0, duration: 0.4, ease: 'power3.out', stagger: 0.03 });
+  }, [revealComplete]);
+
+  // COLLAPSE → timeline: minimap out THEN filters/toggle in
+  useEffect(() => {
+    const filters = filtersRef.current;
+    const toggle = toggleRef.current;
+    const minimap = minimapRef.current;
+    if (!filters || !toggle || revealed) return;
+
+    if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
+
+    const tl = gsap.timeline();
+    collapseTimelineRef.current = tl;
+
+    // Step 1: minimap out
+    if (minimapShownRef.current && minimap) {
+      minimapShownRef.current = false;
+      const thumbs = minimap.querySelectorAll('.slider-overlay__thumb');
+      if (thumbs.length) {
+        gsap.killTweensOf(thumbs);
+        tl.to(thumbs, {
+          xPercent: 100,
+          duration: 0.25,
+          ease: 'power3.in',
+          stagger: 0.02,
+          onComplete: () => {
+            minimap.style.visibility = 'hidden';
+            minimap.style.pointerEvents = 'none';
+          },
+        });
+      }
+    }
+
+    // Step 2: filters + toggle in (after minimap is done)
+    tl.call(() => {
+      filtersSplitRef.current.forEach((s) => s.revert());
+      toggleSplitRef.current.forEach((s) => s.revert());
+      filtersSplitRef.current = [];
+      toggleSplitRef.current = [];
+
+      filters.style.pointerEvents = 'auto';
+      toggle.style.pointerEvents = 'auto';
+
+      const buttons = filters.querySelectorAll('.slider-overlay__filter');
+      buttons.forEach((btn, i) => {
+        const { split } = revealIn(btn as HTMLElement, { duration: 0.4, delay: i * 0.04 });
+        filtersSplitRef.current.push(split);
+      });
+
+      const { split: s2 } = revealIn(toggle, { duration: 0.4 });
+      toggleSplitRef.current = [s2];
+    });
+  }, [revealed]);
+
   // Position title/subtitle relative to reveal bounds
   // Only update while revealed — freeze positions during out animation
   useEffect(() => {
@@ -165,8 +238,9 @@ const SliderOverlay = ({
   useEffect(() => {
     const titleEl = titleRef.current;
     const subEl = subtitleRef.current;
-    if (!titleEl || !subEl || !revealComplete || !project) return;
+    if (!titleEl || !subEl || !revealComplete || !project || titleShownRef.current) return;
 
+    titleShownRef.current = true;
     splitRefsRef.current.forEach((s) => s.revert());
     splitRefsRef.current = [];
 
@@ -185,7 +259,8 @@ const SliderOverlay = ({
     const subEl = subtitleRef.current;
     if (!titleEl || !subEl) return;
 
-    if (!revealed && prevRevealedRef.current) {
+    if (!revealed && titleShownRef.current) {
+      titleShownRef.current = false;
       splitRefsRef.current.forEach((s) => s.revert());
       splitRefsRef.current = [];
 
@@ -199,8 +274,6 @@ const SliderOverlay = ({
       });
       splitRefsRef.current = [s1, s2];
     }
-
-    prevRevealedRef.current = revealed;
   }, [revealed]);
 
   // Animate counter digits: slot machine, text managed via refs (not React)
@@ -279,7 +352,7 @@ const SliderOverlay = ({
         </span>
 
         {categories.length > 0 && (
-          <nav className="slider-overlay__filters">
+          <nav ref={filtersRef} className="slider-overlay__filters">
             <button
               className={`slider-overlay__filter${activeCategory === null ? ' slider-overlay__filter--active' : ''}`}
               onClick={() => onFilter(null)}
@@ -302,6 +375,7 @@ const SliderOverlay = ({
         <p ref={subtitleRef} className="slider-overlay__subtitle" />
 
         <button
+          ref={toggleRef}
           className="slider-overlay__mode-toggle"
           onClick={onToggleMode}
           disabled={viewMode.startsWith('transitioning')}
@@ -316,19 +390,19 @@ const SliderOverlay = ({
         </button>
       </div>
 
-      <div className={`slider-overlay__minimap${revealed ? ' slider-overlay__minimap--visible' : ''}`}>
-        <div ref={trackRef} className="slider-overlay__minimap-track">
-            {thumbWindow.map(({ realIndex, offset }) => (
+      <div ref={minimapRef} className="slider-overlay__minimap">
+        <div className="slider-overlay__minimap-track">
+            {projects.map((p, i) => (
               <button
-                key={`thumb-${offset}`}
-                className={`slider-overlay__thumb${offset === 0 ? ' slider-overlay__thumb--active' : ''}`}
-                onClick={() => onJumpTo(realIndex)}
-                aria-label={projects[realIndex].title}
+                key={p.slug}
+                className={`slider-overlay__thumb${i === currentIndex ? ' slider-overlay__thumb--active' : ''}`}
+                onClick={() => onJumpTo(i)}
+                aria-label={p.title}
               >
-                {projects[realIndex].heroImage && (
+                {p.heroImage && (
                   <img
-                    src={projects[realIndex].thumbnailUrl ?? projects[realIndex].heroImage}
-                    alt={projects[realIndex].title}
+                    src={p.thumbnailUrl ?? p.heroImage}
+                    alt={p.title}
                     loading="lazy"
                   />
                 )}
