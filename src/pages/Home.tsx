@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppState } from '../contexts/AppStateContext';
 import { useLocalizedNavigate } from '../hooks/useLocalizedNavigate';
@@ -34,6 +34,8 @@ const Home = () => {
   const [openingActive, setOpeningActive] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(!state.introCompleted);
   const [isRevealed, setIsRevealed] = useState(false);
+  const [isRevealComplete, setIsRevealComplete] = useState(false);
+  const revealBoundsRef = useRef<DOMRect | null>(null);
 
   const showIntro = showIntroOverlay;
   const canvasActive = !showIntro || openingActive;
@@ -89,8 +91,9 @@ const Home = () => {
     setHoveredSlug(null);
   }, []);
 
-  const handleRevealChange = useCallback((revealed: boolean) => {
+  const handleRevealChange = useCallback((revealed: boolean, complete: boolean) => {
     setIsRevealed(revealed);
+    setIsRevealComplete(revealed && complete);
   }, []);
 
   const handleTransitionComplete = useCallback((target: 'slider' | 'grid') => {
@@ -181,6 +184,7 @@ const Home = () => {
           onHover={handleHover}
           onNavigate={handleNavigate}
           onRevealChange={handleRevealChange}
+          revealBoundsRef={revealBoundsRef}
           onTransitionComplete={handleTransitionComplete}
           onFilterDezoomComplete={handleFilterDezoomComplete}
           openingActive={openingActive}
@@ -192,6 +196,8 @@ const Home = () => {
             <SliderOverlay
               active={canvasActive && isSliderVisible && !isFilterDezoom}
               revealed={isRevealed}
+              revealComplete={isRevealComplete}
+              revealBoundsRef={revealBoundsRef}
               currentIndex={currentIndex}
               projects={filteredProjects}
               onJumpTo={handleJumpTo}

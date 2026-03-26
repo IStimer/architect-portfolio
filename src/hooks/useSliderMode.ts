@@ -32,7 +32,8 @@ interface SliderModeProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onNavigate: (slug: string) => void;
-  onRevealChange?: (revealed: boolean) => void;
+  onRevealChange?: (revealed: boolean, complete: boolean) => void;
+  revealBoundsRef?: React.MutableRefObject<DOMRect | null>;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
   requestFull?: (slug: string) => void;
@@ -79,6 +80,7 @@ export const useSliderMode = ({
   onIndexChange,
   onNavigate,
   onRevealChange,
+  revealBoundsRef,
   jumpToRef,
   markVisible,
   requestFull,
@@ -156,11 +158,14 @@ export const useSliderMode = ({
       const k = totalH > 0 ? Math.round((current - target) / totalH) : 0;
       const finalTarget = target + k * totalH;
 
+      // Kill any residual inertia that would drift after the jump
+      inertiaVelocityRef.current = 0;
+
       const proxy = { value: current };
       jumpTweenRef.current = gsap.to(proxy, {
         value: finalTarget,
         duration: JUMP_DURATION,
-        ease: 'power3.inOut',
+        ease: 'power4.out',
         onUpdate: () => { scrollTargetRef.current = proxy.value; },
         onComplete: () => {
           jumpTweenRef.current = null;
@@ -428,7 +433,10 @@ export const useSliderMode = ({
             const rh = nomH + (th - nomH) * t;
             revSlide.mesh.scale.set(rw, rh, 1);
             revSlide.program.uniforms.uMeshSize.value = [rw, rh];
-            if (raw >= 1) revealingRef.current = false;
+            if (raw >= 1) {
+              revealingRef.current = false;
+              onRevealChange?.(true, true);
+            }
           }
         }
 
@@ -464,21 +472,47 @@ export const useSliderMode = ({
         }
       }
 
-      // ── Push neighbors off-screen when a slide is expanded ──
-      const nomH = SLIDE_SIZE_FRAC * curCtx.viewport.height;
-      for (let i = 0; i < actualCount; i++) {
-        const extra = (slides[i].mesh.scale.y as number) - nomH;
-        if (extra < 0.01) continue;
-        const expandY = slides[i].mesh.position.y as number;
-        // Push neighbors to viewport edges so only the expanded slide is visible
-        const push = curCtx.viewport.height;
-        for (let j = 0; j < actualCount; j++) {
-          if (j === i) continue;
-          if ((slides[j].mesh.position.y as number) > expandY) {
-            slides[j].mesh.position.y += push;
-          } else {
-            slides[j].mesh.position.y -= push;
+      // ── Push neighbors proportionally to expanded slide's extra height ──
+      const vpH = curCtx.viewport.height;
+      const nomH = SLIDE_SIZE_FRAC * vpH;
+      const hasExpanded = revealedRef.current || revealingRef.current || collapsingRef.current;
+      const expandedIdx = collapsingRef.current ? collapseProjectIndexRef.current : revealedIndexRef.current;
+
+      if (hasExpanded) {
+        const expandedSlide = slides.find((s) => s.projectIndex === expandedIdx);
+        if (expandedSlide) {
+          const expandH = expandedSlide.mesh.scale.y as number;
+          const expandY = expandedSlide.mesh.position.y as number;
+          const expandRatio = Math.max(0, (expandH - nomH) / (vpH * 0.8 - nomH));
+          const push = (expandH - nomH) / 2 + expandRatio * vpH * 0.6;
+
+          for (let i = 0; i < actualCount; i++) {
+            if (slides[i].projectIndex === expandedIdx) continue;
+            const curY = slides[i].mesh.position.y as number;
+            if (curY > expandY) {
+              slides[i].mesh.position.y += push;
+            } else {
+              slides[i].mesh.position.y -= push;
+            }
           }
+        }
+      }
+
+      // ── Update reveal bounds ref for DOM positioning (every frame, no callback) ──
+      if (hasExpanded && revealBoundsRef) {
+        const bSlide = slides.find((s) => s.projectIndex === expandedIdx);
+        if (bSlide) {
+          const cw = window.innerWidth;
+          const ch = window.innerHeight;
+          const mx = bSlide.mesh.position.x as number;
+          const my = bSlide.mesh.position.y as number;
+          const mw = bSlide.mesh.scale.x as number;
+          const mh = bSlide.mesh.scale.y as number;
+          const sx = ((mx - mw / 2 + curCtx.viewport.width / 2) / curCtx.viewport.width) * cw;
+          const sy = ((curCtx.viewport.height / 2 - my - mh / 2) / curCtx.viewport.height) * ch;
+          const sw = (mw / curCtx.viewport.width) * cw;
+          const sh = (mh / curCtx.viewport.height) * ch;
+          revealBoundsRef.current = new DOMRect(sx, sy, sw, sh);
         }
       }
 
@@ -542,7 +576,7 @@ export const useSliderMode = ({
       revealingRef.current = true;
       revealedRef.current = true;
       revealedIndexRef.current = projectIndex;
-      onRevealChange?.(true);
+      onRevealChange?.(true, false);
       revealStartTimeRef.current = performance.now();
       revealDurationRef.current = duration;
       revealTargetScaleRef.current = target;
@@ -568,7 +602,7 @@ export const useSliderMode = ({
 
       // Stop any in-progress reveal
       revealingRef.current = false;
-      onRevealChange?.(false);
+      onRevealChange?.(false, false);
 
       const slide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
       if (!slide) {
@@ -606,6 +640,7 @@ export const useSliderMode = ({
       if (oldSlide) startCollapse(oldSlide);
       revealedRef.current = false;
       revealedIndexRef.current = -1;
+      onRevealChange?.(false, false);
       collapsePromiseRef.current = null;
       collapseResolveRef.current = null;
 
@@ -747,6 +782,7 @@ export const useSliderMode = ({
     return () => {
       gsap.ticker.remove(tick);
       if (jumpTweenRef.current) { jumpTweenRef.current.kill(); jumpTweenRef.current = null; }
+      if (revealedRef.current) onRevealChange?.(false, false);
       revealingRef.current = false;
       revealedRef.current = false;
       revealedIndexRef.current = -1;

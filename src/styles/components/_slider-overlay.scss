@@ -32,7 +32,9 @@
 
 // ── Info elements (positioned in center zone corners) ───────────
 .slider-overlay__category {
-  align-self: flex-start;
+  position: absolute;
+  bottom: clamp(12px, 3vw, 48px);
+  left: clamp(12px, 3vw, 48px);
   @include text-2xs;
   font-family: var(--font-secondary);
   letter-spacing: 0.15em;
@@ -48,9 +50,7 @@
 }
 
 .slider-overlay__counter {
-  position: absolute;
-  bottom: clamp(12px, 3vw, 48px);
-  left: clamp(12px, 3vw, 48px);
+  align-self: flex-start;
   font-family: var(--font-secondary);
   font-size: clamp(9px, 0.7vw, 12px);
   letter-spacing: 0.1em;
@@ -109,35 +109,30 @@
   }
 }
 
-// ── Title (above expanded slide, single line) ───────────────────
+// ── Title (above expanded slide, positioned via JS) ─────────────
 .slider-overlay__title {
-  position: absolute;
-  // Positioned just above the expanded slide (slide center = 50vh)
-  bottom: calc(50% + 20vh);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   @include text-4xl;
   font-family: var(--font-primary);
   font-weight: 500;
   letter-spacing: -0.02em;
-  line-height: 0.9;
+  line-height: 1.1;
   margin: 0;
   white-space: nowrap;
+  visibility: hidden;
 }
 
-// ── Subtitle (bottom right of expanded slide) ───────────────────
+// ── Subtitle (below expanded slide, positioned via JS) ──────────
 .slider-overlay__subtitle {
-  position: absolute;
-  // Positioned just below the expanded slide, right-aligned
-  top: calc(50% + 20vh);
-  right: calc(50% - 35vw);
+  position: fixed;
   @include text-xs;
   font-family: var(--font-secondary);
-  opacity: 0.45;
+  color: #111;
   margin: 0;
   line-height: 1.4;
   max-width: 320px;
   text-align: right;
+  visibility: hidden;
 }
 
 // ── Mode toggle (bottom right) ──────────────────────────────────

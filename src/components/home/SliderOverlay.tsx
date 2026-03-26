@@ -1,11 +1,14 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { gsap } from 'gsap';
+import { revealIn, revealOut } from '../../utils/revealText';
 import type { ProjectData, ViewMode } from '../../types';
 import type { SanityCategory } from '../../services/projectService';
 
 interface SliderOverlayProps {
   active: boolean;
   revealed: boolean;
+  revealComplete: boolean;
+  revealBoundsRef: React.RefObject<DOMRect | null>;
   currentIndex: number;
   projects: ProjectData[];
   onJumpTo: (index: number) => void;
@@ -21,7 +24,7 @@ const VISIBLE_THUMBS = 15;
 const HALF_VISIBLE = Math.floor(VISIBLE_THUMBS / 2);
 
 const SliderOverlay = ({
-  active, revealed, currentIndex, projects, onJumpTo,
+  active, revealed, revealComplete, revealBoundsRef, currentIndex, projects, onJumpTo,
   categories, activeCategory, lang, onFilter,
   viewMode, onToggleMode,
 }: SliderOverlayProps) => {
@@ -36,6 +39,12 @@ const SliderOverlay = ({
   const catDebounceRef = useRef<gsap.core.Tween | null>(null);
   const catHiddenRef = useRef(false);
   const catInitRef = useRef(false);
+
+  // Title + subtitle animation on reveal
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const splitRefsRef = useRef<any[]>([]);
+  const prevRevealedRef = useRef(false);
 
   // Counter digits animation (slot machine)
   const digitRefs = useRef<(HTMLSpanElement | null)[]>([null, null, null, null]);
@@ -130,6 +139,69 @@ const SliderOverlay = ({
       });
     }
   }, [currentIndex, project]);
+
+  // Position title/subtitle relative to reveal bounds
+  // Only update while revealed — freeze positions during out animation
+  useEffect(() => {
+    if (!revealed) return;
+    let raf: number;
+    const update = () => {
+      const b = revealBoundsRef.current;
+      const tw = titleRef.current;
+      const sw = subtitleRef.current;
+      if (b && tw && sw) {
+        tw.style.left = `${b.x}px`;
+        tw.style.bottom = `${window.innerHeight - b.y + 8}px`;
+        sw.style.right = `${window.innerWidth - b.x - b.width}px`;
+        sw.style.top = `${b.y + b.height + 8}px`;
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [revealed, revealBoundsRef]);
+
+  // Title + subtitle IN: when reveal animation completes
+  useEffect(() => {
+    const titleEl = titleRef.current;
+    const subEl = subtitleRef.current;
+    if (!titleEl || !subEl || !revealComplete || !project) return;
+
+    splitRefsRef.current.forEach((s) => s.revert());
+    splitRefsRef.current = [];
+
+    // Set text content via ref (React doesn't touch these elements)
+    titleEl.textContent = project.title;
+    subEl.textContent = project.subtitle ?? '';
+
+    const { split: s1 } = revealIn(titleEl, { duration: 0.6 });
+    const { split: s2 } = revealIn(subEl, { duration: 0.6, delay: 0.1 });
+    splitRefsRef.current = [s1, s2];
+  }, [revealComplete]);
+
+  // Title + subtitle OUT: when revealed goes false
+  useEffect(() => {
+    const titleEl = titleRef.current;
+    const subEl = subtitleRef.current;
+    if (!titleEl || !subEl) return;
+
+    if (!revealed && prevRevealedRef.current) {
+      splitRefsRef.current.forEach((s) => s.revert());
+      splitRefsRef.current = [];
+
+      const { split: s1 } = revealOut(titleEl, {
+        duration: 0.3,
+        onComplete: () => { titleEl.style.visibility = 'hidden'; },
+      });
+      const { split: s2 } = revealOut(subEl, {
+        duration: 0.3,
+        onComplete: () => { subEl.style.visibility = 'hidden'; },
+      });
+      splitRefsRef.current = [s1, s2];
+    }
+
+    prevRevealedRef.current = revealed;
+  }, [revealed]);
 
   // Animate counter digits: slot machine, text managed via refs (not React)
   useEffect(() => {
@@ -226,12 +298,8 @@ const SliderOverlay = ({
           </nav>
         )}
 
-        {revealed && (
-          <>
-            <h2 className="slider-overlay__title">{project.title}</h2>
-            <p className="slider-overlay__subtitle">{project.subtitle}</p>
-          </>
-        )}
+        <h2 ref={titleRef} className="slider-overlay__title" />
+        <p ref={subtitleRef} className="slider-overlay__subtitle" />
 
         <button
           className="slider-overlay__mode-toggle"
