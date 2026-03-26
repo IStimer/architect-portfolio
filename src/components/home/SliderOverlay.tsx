@@ -39,6 +39,7 @@ const SliderOverlay = ({
   // Minimap animation on reveal
   const minimapRef = useRef<HTMLDivElement>(null);
   const minimapShownRef = useRef(false);
+  const minimapKeepVisibleRef = useRef(false);
 
   // Filters + toggle hide/show on reveal
   const filtersRef = useRef<HTMLElement>(null);
@@ -72,41 +73,40 @@ const SliderOverlay = ({
     });
   }, [active]);
 
-  // First entrance: reveal filters + toggle after a delay
+  // First entrance: reveal all UI elements in a single delayed block
   useEffect(() => {
     if (!active || hasEnteredRef.current) return;
-    const filters = filtersRef.current;
-    const toggle = toggleRef.current;
-    if (!filters || !toggle) return;
-
     hasEnteredRef.current = true;
 
     gsap.delayedCall(0.5, () => {
-      // Category: slide up inside the overflow:hidden wrapper
-      const catWrap = document.querySelector('.slider-overlay__category-wrap') as HTMLElement | null;
-      const catEl = catWrap?.querySelector('.slider-overlay__category') as HTMLElement | null;
-      if (catWrap && catEl) {
-        catWrap.style.visibility = 'visible';
-        gsap.fromTo(catEl, { yPercent: 100 }, { yPercent: 0, duration: 0.6, ease: 'power2.out' });
-      }
-
-      // Counter: slide up inside the overflow:hidden wrapper
-      const counterWrap = document.querySelector('.slider-overlay__counter-wrap') as HTMLElement | null;
-      const counterEl = counterWrap?.querySelector('.slider-overlay__counter') as HTMLElement | null;
-      if (counterWrap && counterEl) {
-        counterWrap.style.visibility = 'visible';
-        gsap.fromTo(counterEl, { yPercent: 100 }, { yPercent: 0, duration: 0.6, ease: 'power2.out' });
-      }
-
-      // Filters: revealIn per button with stagger
-      const buttons = filters.querySelectorAll('.slider-overlay__filter');
-      buttons.forEach((btn, i) => {
-        revealIn(btn as HTMLElement, { duration: 0.5, delay: i * 0.04 });
+      // Category + counter (wrapper pattern)
+      ['.slider-overlay__category-wrap', '.slider-overlay__counter-wrap'].forEach((sel, i) => {
+        const wrap = document.querySelector(sel) as HTMLElement | null;
+        const inner = wrap?.firstElementChild as HTMLElement | null;
+        if (!wrap || !inner) return;
+        wrap.style.visibility = 'visible';
+        gsap.fromTo(inner,
+          { yPercent: 100 },
+          { yPercent: 0, duration: 0.6, ease: 'power2.out', delay: i * 0.06 },
+        );
       });
 
-      // Toggle
-      revealIn(toggle, { duration: 0.5 });
+      // Filters (revealIn per button, same as expand/collapse)
+      const filters = filtersRef.current;
+      if (filters) {
+        const buttons = filters.querySelectorAll('.slider-overlay__filter');
+        buttons.forEach((btn, i) => {
+          revealIn(btn as HTMLElement, { duration: 0.5, delay: 0.12 + i * 0.04 });
+        });
+      }
+
+      // Toggle (revealIn)
+      const toggle = toggleRef.current;
+      if (toggle) {
+        revealIn(toggle, { duration: 0.5, delay: 0.12 });
+      }
     });
+
   }, [active]);
 
   // Animate category: text managed via ref, not React
@@ -156,6 +156,7 @@ const SliderOverlay = ({
   const filtersSplitRef = useRef<any[]>([]);
   const toggleSplitRef = useRef<any[]>([]);
   const collapseTimelineRef = useRef<gsap.core.Timeline | null>(null);
+  const wasRevealedRef = useRef(false);
 
   // REVEAL → filters/toggle out, minimap in (on revealComplete)
   useEffect(() => {
@@ -204,15 +205,19 @@ const SliderOverlay = ({
     const filters = filtersRef.current;
     const toggle = toggleRef.current;
     const minimap = minimapRef.current;
-    if (!filters || !toggle || revealed) return;
+    const wasRevealed = wasRevealedRef.current;
+    wasRevealedRef.current = revealed;
+
+    // Only fire on true → false transition, not on initial false
+    if (revealed || !wasRevealed || !filters || !toggle) return;
 
     if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
 
     const tl = gsap.timeline();
     collapseTimelineRef.current = tl;
 
-    // Step 1: minimap out
-    if (minimapShownRef.current && minimap) {
+    // Step 1: minimap out (skip if triggered by minimap click)
+    if (minimapShownRef.current && minimap && !minimapKeepVisibleRef.current) {
       minimapShownRef.current = false;
       const thumbs = minimap.querySelectorAll('.slider-overlay__thumb');
       if (thumbs.length) {
@@ -229,6 +234,7 @@ const SliderOverlay = ({
         });
       }
     }
+    minimapKeepVisibleRef.current = false;
 
     // Step 2: filters + toggle in (after minimap is done)
     tl.call(() => {
@@ -438,7 +444,7 @@ const SliderOverlay = ({
               <button
                 key={p.slug}
                 className={`slider-overlay__thumb${i === currentIndex ? ' slider-overlay__thumb--active' : ''}`}
-                onClick={() => onJumpTo(i)}
+                onClick={() => { minimapKeepVisibleRef.current = true; onJumpTo(i); }}
                 aria-label={p.title}
               >
                 {p.heroImage && (

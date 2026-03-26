@@ -182,6 +182,10 @@ const OGLCanvas = ({
     return sliderHandle.getRevealedScreenRect();
   }, [sliderHandle]);
 
+  const selectSlide = useCallback((index: number) => {
+    sliderHandle.selectSlide(index);
+  }, [sliderHandle]);
+
   // Attach to ref so parent can call it (via imperative handle pattern)
   const containerCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -189,9 +193,10 @@ const OGLCanvas = ({
       if (node) {
         (node as any).__jumpTo = handleJumpTo;
         (node as any).__getRevealedScreenRect = getRevealedScreenRect;
+        (node as any).__selectSlide = selectSlide;
       }
     },
-    [handleJumpTo, getRevealedScreenRect]
+    [handleJumpTo, getRevealedScreenRect, selectSlide]
   );
 
   return <div ref={containerCallbackRef} className="ogl-canvas" />;

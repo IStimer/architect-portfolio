@@ -50,6 +50,7 @@ export interface SliderModeHandle {
   getScroll: () => number;
   takeOwnership: () => SlideData[];
   getRevealedScreenRect: () => DOMRect | null;
+  selectSlide: (index: number) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -58,12 +59,16 @@ const WINDOW_SIZE = 9;           // current ± 4 = 9 physical meshes
 const SLIDE_SIZE_FRAC = 0.35;    // slide = 35% viewport height (square, based on height)
 const SLIDE_SPACING = 0.04;     // 4% viewport height between slides
 const SCROLL_LERP = 0.1;
-const VELOCITY_MULTIPLIER = 8.0;
-const VELOCITY_LERP = 0.12;
-const SLIDE_DISTORTION_MULT = 1.5;
+const VELOCITY_MULTIPLIER = 16.0;
+const VELOCITY_LERP = 0.15;
+const SLIDE_DISTORTION_MULT = 3.0;
+const MAX_SCROLL_VELOCITY = 0.25;  // clamp scroll speed
+const MAX_DISTORTION = 1.5;        // clamp per-slide distortion
+const MAX_POSTFX_DISTORTION = 3.0; // clamp post-fx distortion
+const MAX_INERTIA = 0.12;          // clamp drag inertia
 const REVEAL_DURATION = 0.6;     // s — expand on centered slide (no jump needed)
 const COLLAPSE_DURATION = 0.45;  // s — shrink back to cropped
-const JUMP_DURATION = 0.8;       // s — scroll to center a slide
+const JUMP_DURATION = 1.6;       // s — scroll to center a slide
 
 // Cubic out easing — fast start, smooth landing
 function easeOutCubic(t: number): number { return 1 - Math.pow(1 - t, 3); }
@@ -110,6 +115,10 @@ export const useSliderMode = ({
   const lastPointerRef = useRef({ y: 0, t: 0 });
   const inertiaVelocityRef = useRef(0);
   const jumpTweenRef = useRef<gsap.core.Tween | null>(null);
+
+  const switchToSlideRef = useRef<((idx: number) => void) | null>(null);
+  const jumpAndRevealRef = useRef<((idx: number) => void) | null>(null);
+  const revealSlideRef = useRef<((idx: number) => void) | null>(null);
 
   const mouseRef = useRef(new Vec2());
   const raycastRef = useRef<Raycast | null>(null);
@@ -165,7 +174,7 @@ export const useSliderMode = ({
       jumpTweenRef.current = gsap.to(proxy, {
         value: finalTarget,
         duration: JUMP_DURATION,
-        ease: 'power4.out',
+        ease: 'expo.out',
         onUpdate: () => { scrollTargetRef.current = proxy.value; },
         onComplete: () => {
           jumpTweenRef.current = null;
@@ -329,6 +338,7 @@ export const useSliderMode = ({
 
       // Inertia
       if (!isDraggingRef.current && !jumpTweenRef.current) {
+        inertiaVelocityRef.current = Math.max(-MAX_INERTIA, Math.min(MAX_INERTIA, inertiaVelocityRef.current));
         scrollTargetRef.current += inertiaVelocityRef.current;
         inertiaVelocityRef.current *= 0.95;
         if (Math.abs(inertiaVelocityRef.current) < 0.0001) inertiaVelocityRef.current = 0;
@@ -341,7 +351,8 @@ export const useSliderMode = ({
       } else {
         scrollRef.current += (scrollTargetRef.current - scrollRef.current) * SCROLL_LERP;
       }
-      scrollVelocityRef.current = scrollRef.current - prevScroll;
+      const rawVel = scrollRef.current - prevScroll;
+      scrollVelocityRef.current = Math.max(-MAX_SCROLL_VELOCITY, Math.min(MAX_SCROLL_VELOCITY, rawVel));
 
       const scroll = scrollRef.current;
 
@@ -390,10 +401,10 @@ export const useSliderMode = ({
         const cur = slides[i].program.uniforms.uTextureReady.value;
         slides[i].program.uniforms.uTextureReady.value += (targetReady - cur) * 0.08;
 
-        // Per-slide distortion
+        // Per-slide distortion (clamped)
         const distFromCenter = Math.abs(y) / (curCtx.viewport.height / 2);
-        slides[i].program.uniforms.u_distortionAmount.value =
-          Math.abs(scrollVelocityRef.current) * (1 - Math.min(distFromCenter, 1)) * SLIDE_DISTORTION_MULT;
+        slides[i].program.uniforms.u_distortionAmount.value = Math.min(MAX_DISTORTION,
+          Math.abs(scrollVelocityRef.current) * (1 - Math.min(distFromCenter, 1)) * SLIDE_DISTORTION_MULT);
 
         // Track closest to center
         if (Math.abs(y) < closestDist) {
@@ -519,7 +530,7 @@ export const useSliderMode = ({
       // Post-FX distortion
       if (postfxMeshRef.current) {
         const prog = postfxMeshRef.current.program;
-        const target = Math.abs(scrollVelocityRef.current) * VELOCITY_MULTIPLIER;
+        const target = Math.min(MAX_POSTFX_DISTORTION, Math.abs(scrollVelocityRef.current) * VELOCITY_MULTIPLIER);
         prog.uniforms.u_distortionAmount.value += (target - prog.uniforms.u_distortionAmount.value) * VELOCITY_LERP;
       }
 
@@ -550,14 +561,24 @@ export const useSliderMode = ({
     // They run independently on different slides.
 
     function computeRevealTarget(projectIndex: number) {
+      // Try mesh first, fallback to texture map for distant slides
+      let imgW = 0, imgH = 0;
       const slide = slides.find((s) => s.projectIndex === projectIndex);
-      if (!slide) return null;
-      const res = slide.program.uniforms.uResolution.value;
-      const imgW = res[0], imgH = res[1];
+      if (slide) {
+        const res = slide.program.uniforms.uResolution.value;
+        imgW = res[0]; imgH = res[1];
+      }
+      if (imgW === 0 || imgH === 0) {
+        // Fallback: read from texture cache
+        const slug = projects[projectIndex]?.slug;
+        if (slug) {
+          const entry = textures.get(slug);
+          if (entry) { imgW = entry.width; imgH = entry.height; }
+        }
+      }
       if (imgW === 0 || imgH === 0) return null;
       const imgAspect = imgW / imgH;
 
-      // Fit the full image within viewport bounds (70% width, 80% height)
       const maxW = viewport.width * 0.70;
       const maxH = viewport.height * 0.80;
       let targetW = maxW;
@@ -582,7 +603,8 @@ export const useSliderMode = ({
       revealTargetScaleRef.current = target;
 
       // Upgrade texture to full quality (1200px) on expand
-      const slug = slides.find((s) => s.projectIndex === projectIndex)?.slug;
+      const slug = projects[projectIndex]?.slug
+        ?? slides.find((s) => s.projectIndex === projectIndex)?.slug;
       if (slug) requestFull?.(slug);
     }
 
@@ -649,12 +671,18 @@ export const useSliderMode = ({
       revealSlide(targetIndex, JUMP_DURATION);
     }
 
+    // Expose internal functions via refs for external access
+    switchToSlideRef.current = switchToSlide;
+    jumpAndRevealRef.current = jumpAndReveal;
+    revealSlideRef.current = (idx: number) => revealSlide(idx);
+
     // ── Wheel ──
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       collapseReveal();
       if (jumpTweenRef.current) { jumpTweenRef.current.kill(); jumpTweenRef.current = null; }
-      scrollTargetRef.current += e.deltaY * 0.005;
+      const delta = Math.max(-50, Math.min(50, e.deltaY)) * 0.005;
+      scrollTargetRef.current += delta;
     };
     ctx.canvas.addEventListener('wheel', handleWheel, { passive: false });
 
@@ -879,6 +907,49 @@ export const useSliderMode = ({
       const screenH = (meshH / viewport.height) * ch;
 
       return new DOMRect(screenX, screenY, screenW, screenH);
+    },
+    selectSlide: (index: number) => {
+      if (revealedRef.current && revealedIndexRef.current === index) return;
+
+      const doJumpAndReveal = () => {
+        if (index === activeIndexRef.current) {
+          revealSlideRef.current?.(index);
+        } else {
+          jumpAndRevealRef.current?.(index);
+        }
+      };
+
+      if (revealedRef.current) {
+        // Sequential: collapse first, then jump + reveal
+        const collapseRef = collapsePromiseRef.current;
+        if (collapseRef) {
+          // Already collapsing, wait then proceed
+          collapseRef.then(doJumpAndReveal);
+        } else {
+          // Start collapse, wait, then proceed
+          const collapse = slidesRef.current.length > 0
+            ? (() => {
+                // Call collapseReveal via the internal ref
+                revealingRef.current = false;
+                onRevealChange?.(false, false);
+                const slide = slidesRef.current.find((s) => s.projectIndex === revealedIndexRef.current);
+                if (!slide) { revealedRef.current = false; revealedIndexRef.current = -1; return Promise.resolve(); }
+                revealedRef.current = false;
+                revealedIndexRef.current = -1;
+                collapsingRef.current = true;
+                collapseProjectIndexRef.current = slide.projectIndex;
+                collapseStartTimeRef.current = performance.now();
+                collapseStartScaleRef.current = { w: slide.mesh.scale.x as number, h: slide.mesh.scale.y as number };
+                const promise = new Promise<void>((resolve) => { collapseResolveRef.current = resolve; });
+                collapsePromiseRef.current = promise;
+                return promise;
+              })()
+            : Promise.resolve();
+          collapse.then(doJumpAndReveal);
+        }
+      } else {
+        doJumpAndReveal();
+      }
     },
     takeOwnership: () => {
       revealingRef.current = false;

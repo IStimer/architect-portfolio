@@ -159,12 +159,12 @@
   padding: 0;
   cursor: pointer;
   pointer-events: auto;
+  visibility: hidden;
   font-family: var(--font-secondary);
   font-size: clamp(9px, 0.7vw, 12px);
   letter-spacing: 0.12em;
   color: rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s;
-  visibility: hidden;
 
   &:disabled {
     opacity: 0.4;

@@ -130,8 +130,8 @@ const Home = () => {
 
   const handleJumpTo = useCallback((index: number) => {
     const canvasEl = document.querySelector('.ogl-canvas') as any;
-    if (canvasEl?.__jumpTo) {
-      canvasEl.__jumpTo(index);
+    if (canvasEl?.__selectSlide) {
+      canvasEl.__selectSlide(index);
     }
     setCurrentIndex(index);
   }, []);
