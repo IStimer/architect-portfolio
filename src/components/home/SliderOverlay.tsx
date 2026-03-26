@@ -82,6 +82,22 @@ const SliderOverlay = ({
     hasEnteredRef.current = true;
 
     gsap.delayedCall(0.5, () => {
+      // Category: slide up inside the overflow:hidden wrapper
+      const catWrap = document.querySelector('.slider-overlay__category-wrap') as HTMLElement | null;
+      const catEl = catWrap?.querySelector('.slider-overlay__category') as HTMLElement | null;
+      if (catWrap && catEl) {
+        catWrap.style.visibility = 'visible';
+        gsap.fromTo(catEl, { yPercent: 100 }, { yPercent: 0, duration: 0.6, ease: 'power2.out' });
+      }
+
+      // Counter: slide up inside the overflow:hidden wrapper
+      const counterWrap = document.querySelector('.slider-overlay__counter-wrap') as HTMLElement | null;
+      const counterEl = counterWrap?.querySelector('.slider-overlay__counter') as HTMLElement | null;
+      if (counterWrap && counterEl) {
+        counterWrap.style.visibility = 'visible';
+        gsap.fromTo(counterEl, { yPercent: 100 }, { yPercent: 0, duration: 0.6, ease: 'power2.out' });
+      }
+
       // Filters: revealIn per button with stagger
       const buttons = filters.querySelectorAll('.slider-overlay__filter');
       buttons.forEach((btn, i) => {
@@ -356,22 +372,26 @@ const SliderOverlay = ({
       <div className="slider-overlay__center">
         <div className="slider-overlay__crosshair" />
 
-        <span className="slider-overlay__category">
-          <span ref={categoryRef} />
-        </span>
+        <div className="slider-overlay__category-wrap">
+          <span className="slider-overlay__category">
+            <span ref={categoryRef} />
+          </span>
+        </div>
 
-        <span className="slider-overlay__counter">
-          <span className="slider-overlay__digit">
-            <span ref={el => { digitRefs.current[0] = el; }} />
-            <span ref={el => { digitRefs.current[1] = el; }} />
+        <div className="slider-overlay__counter-wrap">
+          <span className="slider-overlay__counter">
+            <span className="slider-overlay__digit">
+              <span ref={el => { digitRefs.current[0] = el; }} />
+              <span ref={el => { digitRefs.current[1] = el; }} />
+            </span>
+            <span className="slider-overlay__digit">
+              <span ref={el => { digitRefs.current[2] = el; }} />
+              <span ref={el => { digitRefs.current[3] = el; }} />
+            </span>
+            {' / '}
+            {String(total).padStart(2, '0')}
           </span>
-          <span className="slider-overlay__digit">
-            <span ref={el => { digitRefs.current[2] = el; }} />
-            <span ref={el => { digitRefs.current[3] = el; }} />
-          </span>
-          {' / '}
-          {String(total).padStart(2, '0')}
-        </span>
+        </div>
 
         {categories.length > 0 && (
           <nav ref={filtersRef} className="slider-overlay__filters">

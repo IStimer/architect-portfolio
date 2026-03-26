@@ -31,10 +31,15 @@
 }
 
 // ── Info elements (positioned in center zone corners) ───────────
-.slider-overlay__category {
+.slider-overlay__category-wrap {
   position: absolute;
   bottom: clamp(12px, 3vw, 48px);
   left: clamp(12px, 3vw, 48px);
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.slider-overlay__category {
   @include text-2xs;
   font-family: var(--font-secondary);
   letter-spacing: 0.15em;
@@ -49,8 +54,13 @@
   }
 }
 
-.slider-overlay__counter {
+.slider-overlay__counter-wrap {
   align-self: flex-start;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.slider-overlay__counter {
   font-family: var(--font-secondary);
   font-size: clamp(9px, 0.7vw, 12px);
   letter-spacing: 0.1em;
