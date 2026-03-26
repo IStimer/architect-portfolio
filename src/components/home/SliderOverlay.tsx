@@ -60,7 +60,9 @@ const SliderOverlay = ({
   const total = projects.length;
 
 
-  // Animate opacity when active changes OR when component first renders with active=true
+  // Animate opacity when active changes
+  const hasEnteredRef = useRef(false);
+
   useEffect(() => {
     if (!containerRef.current) return;
     gsap.to(containerRef.current, {
@@ -70,6 +72,26 @@ const SliderOverlay = ({
     });
   }, [active]);
 
+  // First entrance: reveal filters + toggle after a delay
+  useEffect(() => {
+    if (!active || hasEnteredRef.current) return;
+    const filters = filtersRef.current;
+    const toggle = toggleRef.current;
+    if (!filters || !toggle) return;
+
+    hasEnteredRef.current = true;
+
+    gsap.delayedCall(0.5, () => {
+      // Filters: revealIn per button with stagger
+      const buttons = filters.querySelectorAll('.slider-overlay__filter');
+      buttons.forEach((btn, i) => {
+        revealIn(btn as HTMLElement, { duration: 0.5, delay: i * 0.04 });
+      });
+
+      // Toggle
+      revealIn(toggle, { duration: 0.5 });
+    });
+  }, [active]);
 
   // Animate category: text managed via ref, not React
   useEffect(() => {
