@@ -117,9 +117,9 @@ export const useSliderMode = ({
   const inertiaVelocityRef = useRef(0);
   const jumpTweenRef = useRef<gsap.core.Tween | null>(null);
 
-  const switchToSlideRef = useRef<((idx: number) => void) | null>(null);
   const jumpAndRevealRef = useRef<((idx: number) => void) | null>(null);
   const revealSlideRef = useRef<((idx: number) => void) | null>(null);
+  const collapseRevealRef = useRef<(() => Promise<void>) | null>(null);
 
   const mouseRef = useRef(new Vec2());
   const raycastRef = useRef<Raycast | null>(null);
@@ -656,26 +656,10 @@ export const useSliderMode = ({
       return promise;
     }
 
-    // Collapse old + jump + reveal new — all start simultaneously
-    function switchToSlide(targetIndex: number) {
-      const oldSlide = slides.find((s) => s.projectIndex === revealedIndexRef.current);
-      revealingRef.current = false;
-      if (oldSlide) startCollapse(oldSlide);
-      revealedRef.current = false;
-      revealedIndexRef.current = -1;
-      onRevealChange?.(false, false);
-      collapsePromiseRef.current = null;
-      collapseResolveRef.current = null;
-
-      onIndexChange(targetIndex);
-      jumpTo(targetIndex);
-      revealSlide(targetIndex, JUMP_DURATION);
-    }
-
     // Expose internal functions via refs for external access
-    switchToSlideRef.current = switchToSlide;
     jumpAndRevealRef.current = jumpAndReveal;
     revealSlideRef.current = (idx: number) => revealSlide(idx);
+    collapseRevealRef.current = collapseReveal;
 
     // ── Wheel ──
     const handleWheel = (e: WheelEvent) => {
@@ -927,33 +911,7 @@ export const useSliderMode = ({
       };
 
       if (revealedRef.current) {
-        // Sequential: collapse first, then jump + reveal
-        const collapseRef = collapsePromiseRef.current;
-        if (collapseRef) {
-          // Already collapsing, wait then proceed
-          collapseRef.then(doJumpAndReveal);
-        } else {
-          // Start collapse, wait, then proceed
-          const collapse = slidesRef.current.length > 0
-            ? (() => {
-                // Call collapseReveal via the internal ref
-                revealingRef.current = false;
-                onRevealChange?.(false, false);
-                const slide = slidesRef.current.find((s) => s.projectIndex === revealedIndexRef.current);
-                if (!slide) { revealedRef.current = false; revealedIndexRef.current = -1; return Promise.resolve(); }
-                revealedRef.current = false;
-                revealedIndexRef.current = -1;
-                collapsingRef.current = true;
-                collapseProjectIndexRef.current = slide.projectIndex;
-                collapseStartTimeRef.current = performance.now();
-                collapseStartScaleRef.current = { w: slide.mesh.scale.x as number, h: slide.mesh.scale.y as number };
-                const promise = new Promise<void>((resolve) => { collapseResolveRef.current = resolve; });
-                collapsePromiseRef.current = promise;
-                return promise;
-              })()
-            : Promise.resolve();
-          collapse.then(doJumpAndReveal);
-        }
+        (collapseRevealRef.current?.() ?? Promise.resolve()).then(doJumpAndReveal);
       } else {
         doJumpAndReveal();
       }

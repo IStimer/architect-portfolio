@@ -8,6 +8,7 @@ import SEO from '../components/SEO';
 import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
+import { gsap } from 'gsap';
 import { lenisService } from '../services/lenisService';
 import { startHeroTransition, getTransitionDirection, finishReverseTransition } from '../services/heroTransition';
 import { preloadProjectChunk } from '../hooks/usePageTransition';
@@ -120,7 +121,21 @@ const Home = () => {
       const imageUrl = project?.heroImage;
 
       if (imageUrl && rect) {
-        // Morph image to hero position first, then navigate when done
+        // Trigger UI out animations in parallel with the morph
+        setIsRevealed(false);
+        setIsRevealComplete(false);
+
+        // Animate out elements not handled by the reveal effects
+        const crosshair = document.querySelector('.slider-overlay__crosshair') as HTMLElement | null;
+        const catWrap = document.querySelector('.slider-overlay__category-wrap') as HTMLElement | null;
+        const counterWrap = document.querySelector('.slider-overlay__counter-wrap') as HTMLElement | null;
+        const catInner = catWrap?.firstElementChild as HTMLElement | null;
+        const counterInner = counterWrap?.firstElementChild as HTMLElement | null;
+
+        if (crosshair) gsap.to(crosshair, { opacity: 0, duration: 0.3, ease: 'power2.in' });
+        if (catInner) gsap.to(catInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
+        if (counterInner) gsap.to(counterInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
+
         startHeroTransition({ imageUrl, rect }, () => {
           navigateTo('project', { slug });
         });

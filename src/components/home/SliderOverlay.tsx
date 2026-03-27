@@ -201,7 +201,7 @@ const SliderOverlay = ({
     el.style.visibility = 'visible';
     el.style.pointerEvents = 'auto';
     gsap.set(thumbs, { xPercent: 100 });
-    gsap.to(thumbs, { xPercent: 0, duration: 0.4, ease: 'power3.out', stagger: 0.03 });
+    gsap.to(thumbs, { xPercent: 0, duration: 0.3, ease: 'power3.out', stagger: 0.02 });
   }, [revealComplete]);
 
   // COLLAPSE → timeline: minimap out THEN filters/toggle in
@@ -230,9 +230,9 @@ const SliderOverlay = ({
         gsap.killTweensOf(thumbs);
         tl.to(thumbs, {
           xPercent: 100,
-          duration: 0.25,
+          duration: 0.2,
           ease: 'power3.in',
-          stagger: 0.02,
+          stagger: 0.015,
           onComplete: () => {
             minimap.style.visibility = 'hidden';
             minimap.style.pointerEvents = 'none';
