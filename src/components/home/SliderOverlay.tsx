@@ -19,13 +19,14 @@ interface SliderOverlayProps {
   onFilter: (slug: string | null) => void;
   viewMode: ViewMode;
   onToggleMode: () => void;
+  totalProjectCount: number;
 }
 
 
 const SliderOverlay = ({
   active, revealed, revealComplete, revealBoundsRef, keepMinimapRef, currentIndex, projects, onJumpTo,
   categories, activeCategory, lang, onFilter,
-  viewMode, onToggleMode,
+  viewMode, onToggleMode, totalProjectCount,
 }: SliderOverlayProps) => {
   // ── Refs ──
   const containerRef = useRef<HTMLDivElement>(null);
@@ -452,6 +453,7 @@ const SliderOverlay = ({
               <button
                 key={p.slug}
                 className={`slider-overlay__thumb${i === currentIndex ? ' slider-overlay__thumb--active' : ''}`}
+                style={{ height: `calc((100vh - 2 * clamp(12px, 3vw, 48px) - ${(totalProjectCount - 1) * 2}px) / ${totalProjectCount})` }}
                 onClick={() => { minimapKeepVisibleRef.current = true; onJumpTo(i); }}
                 aria-label={p.title}
               >

@@ -267,6 +267,7 @@ const Home = () => {
               onFilter={handleCategoryFilter}
               viewMode={viewMode}
               onToggleMode={handleToggleMode}
+              totalProjectCount={projects.length}
             />
 
 
