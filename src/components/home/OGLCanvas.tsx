@@ -194,9 +194,10 @@ const OGLCanvas = ({
         (node as any).__jumpTo = handleJumpTo;
         (node as any).__getRevealedScreenRect = getRevealedScreenRect;
         (node as any).__selectSlide = selectSlide;
+        (node as any).__getTier = getTier;
       }
     },
-    [handleJumpTo, getRevealedScreenRect, selectSlide]
+    [handleJumpTo, getRevealedScreenRect, selectSlide, getTier]
   );
 
   return <div ref={containerCallbackRef} className="ogl-canvas" />;

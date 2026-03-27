@@ -48,6 +48,11 @@ const FULL_GPU = 1200 * 900 * 4;  // ~4.32 MB
 const HERO_GPU = 2400 * 1600 * 4; // ~15.36 MB
 const LQIP_GPU = 16 * 16 * 4;    // ~1 KB
 
+// ── Module-level image cache (survives unmount/remount) ─────────
+// Stores decoded HTMLImageElement per slug+tier so re-creating
+// a GL context skips the network fetch entirely.
+const _imageCache = new Map<string, { img: HTMLImageElement; tier: TextureTier }>();
+
 // ── Placeholder ─────────────────────────────────────────────────
 
 let _placeholderCanvas: HTMLCanvasElement | null = null;
@@ -146,26 +151,42 @@ export function useTextureManager(
     projects.forEach((project) => {
       if (map.has(project.slug)) return; // already initialized
 
+      // Check module-level cache for a previously decoded image
+      const cached = _imageCache.get(project.slug);
+
+      const initImage = cached ? cached.img : getPlaceholderImage();
+      const initTier = cached ? cached.tier : TextureTier.NONE;
+      const initW = cached ? cached.img.naturalWidth : 4;
+      const initH = cached ? cached.img.naturalHeight : 4;
+      const initGpu = cached ? gpuForTier(cached.tier) : LQIP_GPU;
+
       const texture = new Texture(gl, {
-        image: getPlaceholderImage(),
-        generateMipmaps: false,
+        image: initImage,
+        generateMipmaps: cached ? true : false,
         minFilter: gl.LINEAR,
         magFilter: gl.LINEAR,
       });
 
-      map.set(project.slug, { texture, width: 4, height: 4 });
+      map.set(project.slug, { texture, width: initW, height: initH });
       meta.set(project.slug, {
         slug: project.slug,
-        tier: TextureTier.NONE,
+        tier: initTier,
         lastAccess: performance.now(),
-        gpuBytes: LQIP_GPU,
+        gpuBytes: initGpu,
         visible: false,
         loading: null,
       });
 
+      // If already cached at THUMBNAIL+, skip LQIP decode
+      if (cached && cached.tier >= TextureTier.THUMBNAIL) return;
+
       // If LQIP base64 available, decode and apply
       if (project.lqipBase64) {
         const p = decodeLqip(project.lqipBase64).then((img) => {
+          // Don't downgrade if cache already applied a higher tier
+          const m = meta.get(project.slug);
+          if (m && m.tier >= TextureTier.THUMBNAIL) return;
+
           texture.image = img;
           texture.needsUpdate = true;
           const entry = map.get(project.slug);
@@ -173,7 +194,6 @@ export function useTextureManager(
             entry.width = img.naturalWidth || 16;
             entry.height = img.naturalHeight || 16;
           }
-          const m = meta.get(project.slug);
           if (m) m.tier = TextureTier.LQIP;
         });
         lqipPromises.push(p);
@@ -205,6 +225,11 @@ export function useTextureManager(
           slotMeta.tier = TextureTier.THUMBNAIL;
           slotMeta.gpuBytes = gpuForTier(TextureTier.THUMBNAIL);
           slotMeta.loading = null;
+          // Cache for reuse across GL context recreation
+          const prevCached = _imageCache.get(slug);
+          if (!prevCached || prevCached.tier < TextureTier.THUMBNAIL) {
+            _imageCache.set(slug, { img, tier: TextureTier.THUMBNAIL });
+          }
         }).catch(() => {
           const slotMeta = meta.get(slug);
           if (slotMeta) slotMeta.loading = null;
@@ -315,6 +340,12 @@ export function useTextureManager(
           currentMeta.tier = tier;
           currentMeta.gpuBytes = gpuForTier(tier);
           currentMeta.loading = null;
+
+          // Cache decoded image for reuse across GL context recreation
+          const prevCached = _imageCache.get(slug);
+          if (!prevCached || prevCached.tier < tier) {
+            _imageCache.set(slug, { img, tier });
+          }
 
           evictIfNeeded();
         })

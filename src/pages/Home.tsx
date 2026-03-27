@@ -44,23 +44,54 @@ const Home = () => {
   // Prefetch Project page chunk on idle so first navigation is instant
   useEffect(() => { preloadProjectChunk(); }, []);
 
-  // Finish reverse transition (Project → Home) when canvas is ready
-  useEffect(() => {
-    if (getTransitionDirection() === 'reverse') {
-      // Small delay for canvas to render the first frame
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          finishReverseTransition();
-        });
-      });
-    }
-  }, []);
-
   // Filter projects by active category
   const filteredProjects = useMemo(() => {
     if (!activeCategory) return projects;
     return projects.filter((p) => p.categorySlug === activeCategory);
   }, [projects, activeCategory]);
+
+  // Finish reverse transition (Project → Home) when neighbor textures are ready
+  useEffect(() => {
+    if (getTransitionDirection() !== 'reverse') return;
+
+    const POLL_INTERVAL = 50;
+    const TIMEOUT = 2000;
+    const startTime = Date.now();
+
+    const checkReady = () => {
+      const wrapperEl = document.querySelector('.ogl-canvas') as any;
+      const getTierFn = wrapperEl?.__getTier as ((slug: string) => number) | undefined;
+
+      if (!getTierFn) {
+        if (Date.now() - startTime < TIMEOUT) {
+          timer = window.setTimeout(checkReady, POLL_INTERVAL);
+        } else {
+          finishReverseTransition();
+        }
+        return;
+      }
+
+      const idx = currentIndex;
+      const len = filteredProjects.length;
+      const slugs = [
+        filteredProjects[idx]?.slug,
+        filteredProjects[(idx - 1 + len) % len]?.slug,
+        filteredProjects[(idx + 1) % len]?.slug,
+      ].filter(Boolean);
+
+      const THUMBNAIL = 2;
+      const allReady = slugs.every(s => getTierFn(s!) >= THUMBNAIL);
+
+      if (allReady || Date.now() - startTime >= TIMEOUT) {
+        finishReverseTransition();
+      } else {
+        timer = window.setTimeout(checkReady, POLL_INTERVAL);
+      }
+    };
+
+    let timer = window.setTimeout(checkReady, POLL_INTERVAL);
+    return () => clearTimeout(timer);
+  }, [currentIndex, filteredProjects]);
 
   const handleUnlock = useCallback(() => {
     setIntroCompleted();
@@ -136,9 +167,19 @@ const Home = () => {
         if (catInner) gsap.to(catInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
         if (counterInner) gsap.to(counterInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
 
+        // Collect neighbor thumbnail URLs for reverse transition
+        const idx = filteredProjects.findIndex(p => p.slug === slug);
+        const len = filteredProjects.length;
+        const prevProject = filteredProjects[(idx - 1 + len) % len];
+        const nextProject = filteredProjects[(idx + 1) % len];
+        const neighborUrls = [
+          prevProject?.thumbnailUrl ?? prevProject?.heroImage ?? '',
+          nextProject?.thumbnailUrl ?? nextProject?.heroImage ?? '',
+        ];
+
         startHeroTransition({ imageUrl, rect }, () => {
           navigateTo('project', { slug });
-        });
+        }, neighborUrls);
       } else {
         navigateTo('project', { slug });
       }
