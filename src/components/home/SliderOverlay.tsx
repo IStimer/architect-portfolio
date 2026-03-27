@@ -9,6 +9,7 @@ interface SliderOverlayProps {
   revealed: boolean;
   revealComplete: boolean;
   revealBoundsRef: React.RefObject<DOMRect | null>;
+  keepMinimapRef: React.MutableRefObject<boolean>;
   currentIndex: number;
   projects: ProjectData[];
   onJumpTo: (index: number) => void;
@@ -22,7 +23,7 @@ interface SliderOverlayProps {
 
 
 const SliderOverlay = ({
-  active, revealed, revealComplete, revealBoundsRef, currentIndex, projects, onJumpTo,
+  active, revealed, revealComplete, revealBoundsRef, keepMinimapRef, currentIndex, projects, onJumpTo,
   categories, activeCategory, lang, onFilter,
   viewMode, onToggleMode,
 }: SliderOverlayProps) => {
@@ -164,6 +165,9 @@ const SliderOverlay = ({
     const toggle = toggleRef.current;
     if (!filters || !toggle || !revealed) return;
 
+    // Skip if already hidden (e.g. minimap/arrow navigation between reveals)
+    if (filters.style.pointerEvents === 'none') return;
+
     if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
 
     filtersSplitRef.current.forEach((s) => s.revert());
@@ -216,8 +220,10 @@ const SliderOverlay = ({
     const tl = gsap.timeline();
     collapseTimelineRef.current = tl;
 
-    // Step 1: minimap out (skip if triggered by minimap click)
-    if (minimapShownRef.current && minimap && !minimapKeepVisibleRef.current) {
+    // Step 1: minimap out (skip if triggered by minimap click or arrow keys)
+    const keepMinimap = minimapKeepVisibleRef.current || keepMinimapRef.current;
+    keepMinimapRef.current = false;
+    if (minimapShownRef.current && minimap && !keepMinimap) {
       minimapShownRef.current = false;
       const thumbs = minimap.querySelectorAll('.slider-overlay__thumb');
       if (thumbs.length) {
@@ -236,7 +242,9 @@ const SliderOverlay = ({
     }
     minimapKeepVisibleRef.current = false;
 
-    // Step 2: filters + toggle in (after minimap is done)
+    // Step 2: filters + toggle in (skip if minimap stays visible — we're switching slides)
+    if (keepMinimap) return;
+
     tl.call(() => {
       filtersSplitRef.current.forEach((s) => s.revert());
       toggleSplitRef.current.forEach((s) => s.revert());

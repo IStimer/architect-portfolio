@@ -91,9 +91,12 @@ const Home = () => {
     setHoveredSlug(null);
   }, []);
 
-  const handleRevealChange = useCallback((revealed: boolean, complete: boolean) => {
+  const keepMinimapRef = useRef(false);
+
+  const handleRevealChange = useCallback((revealed: boolean, complete: boolean, keepMinimap?: boolean) => {
     setIsRevealed(revealed);
     setIsRevealComplete(revealed && complete);
+    if (keepMinimap) keepMinimapRef.current = true;
   }, []);
 
   const handleTransitionComplete = useCallback((target: 'slider' | 'grid') => {
@@ -198,6 +201,7 @@ const Home = () => {
               revealed={isRevealed}
               revealComplete={isRevealComplete}
               revealBoundsRef={revealBoundsRef}
+              keepMinimapRef={keepMinimapRef}
               currentIndex={currentIndex}
               projects={filteredProjects}
               onJumpTo={handleJumpTo}

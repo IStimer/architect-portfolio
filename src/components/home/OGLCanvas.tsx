@@ -22,7 +22,7 @@ interface OGLCanvasProps {
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
-  onRevealChange?: (revealed: boolean, complete: boolean) => void;
+  onRevealChange?: (revealed: boolean, complete: boolean, keepMinimap?: boolean) => void;
   revealBoundsRef?: React.MutableRefObject<DOMRect | null>;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
   onFilterDezoomComplete: () => void;

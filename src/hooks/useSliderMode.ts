@@ -32,7 +32,7 @@ interface SliderModeProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onNavigate: (slug: string) => void;
-  onRevealChange?: (revealed: boolean, complete: boolean) => void;
+  onRevealChange?: (revealed: boolean, complete: boolean, keepMinimap?: boolean) => void;
   revealBoundsRef?: React.MutableRefObject<DOMRect | null>;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;
   markVisible?: (slugs: Set<string>) => void;
@@ -66,6 +66,7 @@ const MAX_SCROLL_VELOCITY = 0.25;  // clamp scroll speed
 const MAX_DISTORTION = 1.5;        // clamp per-slide distortion
 const MAX_POSTFX_DISTORTION = 3.0; // clamp post-fx distortion
 const MAX_INERTIA = 0.12;          // clamp drag inertia
+const CLICK_THRESHOLD = 5;        // px — below = click, above = drag
 const REVEAL_DURATION = 0.6;     // s — expand on centered slide (no jump needed)
 const COLLAPSE_DURATION = 0.45;  // s — shrink back to cropped
 const JUMP_DURATION = 1.6;       // s — scroll to center a slide
@@ -748,7 +749,7 @@ export const useSliderMode = ({
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
       ctx.canvas.style.cursor = '';
-      if (Math.abs(e.clientY - dragStartYRef.current) >= 5) {
+      if (Math.abs(e.clientY - dragStartYRef.current) >= CLICK_THRESHOLD) {
         collapseReveal();
         return;
       }
@@ -764,7 +765,10 @@ export const useSliderMode = ({
       if (revealedRef.current && hitSlide.projectIndex === revealedIndexRef.current) {
         onNavigate(hitSlide.slug);
       } else if (revealedRef.current) {
-        switchToSlide(hitSlide.projectIndex);
+        // Sequential: collapse first, then jump + reveal
+        collapseReveal().then(() => {
+          jumpAndReveal(hitSlide.projectIndex);
+        });
       } else if (hitSlide.projectIndex === activeIndexRef.current) {
         jumpTo(hitSlide.projectIndex);
         revealSlide(hitSlide.projectIndex);
@@ -776,7 +780,10 @@ export const useSliderMode = ({
     // ── Keyboard ──
     function handleArrow(newIdx: number) {
       if (revealedRef.current) {
-        switchToSlide(newIdx);
+        onRevealChange?.(false, false, true); // keepMinimap = true
+        collapseReveal().then(() => {
+          jumpAndReveal(newIdx);
+        });
       } else {
         onIndexChange(newIdx);
         jumpTo(newIdx);
