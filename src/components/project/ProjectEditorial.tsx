@@ -37,9 +37,17 @@ export const ProjectEditorial = forwardRef<HTMLDivElement, ProjectEditorialProps
       <div className="project-editorial" ref={ref}>
         {project.editorialContent!.map((block) => {
           if (block._type === 'textBlock') {
-            return <TextBlock key={block._key} block={block} />;
+            return (
+              <div key={block._key} data-reveal="fade-up" style={{ visibility: 'hidden' }}>
+                <TextBlock block={block} />
+              </div>
+            );
           }
-          return <EditorialBlock key={block._key} block={block} />;
+          return (
+            <div key={block._key} data-reveal="fade-up" style={{ visibility: 'hidden' }}>
+              <EditorialBlock block={block} />
+            </div>
+          );
         })}
       </div>
     );
