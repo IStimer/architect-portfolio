@@ -5,7 +5,7 @@
   pointer-events: none;
 }
 
-// ---------- Crosshair (same spirit as slider-overlay__crosshair) ----------
+// ---------- Crosshair ----------
 .grid-overlay__crosshair {
   position: absolute;
   background: rgba(0, 0, 0, 0.12);
@@ -25,6 +25,7 @@
   }
 }
 
+// ---------- Hover label ----------
 .grid-overlay__label {
   position: fixed;
   top: 0;
@@ -53,3 +54,36 @@
   letter-spacing: 0.12em;
   color: rgba(0, 0, 0, 0.4);
 }
+
+// ---------- Filters (centered top bar) ----------
+.grid-overlay__filters {
+  position: absolute;
+  top: clamp(12px, 3vw, 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  pointer-events: auto;
+}
+
+.grid-overlay__filter {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-secondary);
+  font-size: clamp(9px, 0.7vw, 12px);
+  letter-spacing: 0.12em;
+  color: rgba(0, 0, 0, 0.25);
+  transition: color 0.3s;
+  white-space: nowrap;
+
+  &:hover {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  &--active {
+    color: #111;
+  }
+}
+

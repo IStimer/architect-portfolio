@@ -18,7 +18,6 @@ interface SliderOverlayProps {
   lang: 'fr' | 'en';
   onFilter: (slug: string | null) => void;
   viewMode: ViewMode;
-  onToggleMode: () => void;
   totalProjectCount: number;
 }
 
@@ -26,7 +25,7 @@ interface SliderOverlayProps {
 const SliderOverlay = ({
   active, revealed, revealComplete, revealBoundsRef, keepMinimapRef, currentIndex, projects, onJumpTo,
   categories, activeCategory, lang, onFilter,
-  viewMode, onToggleMode, totalProjectCount,
+  viewMode, totalProjectCount,
 }: SliderOverlayProps) => {
   // ── Refs ──
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,9 +42,8 @@ const SliderOverlay = ({
   const minimapShownRef = useRef(false);
   const minimapKeepVisibleRef = useRef(false);
 
-  // Filters + toggle hide/show on reveal
+  // Filters hide/show on reveal
   const filtersRef = useRef<HTMLElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
 
   // Title + subtitle animation on reveal
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -66,20 +64,45 @@ const SliderOverlay = ({
   // Animate opacity when active changes
   const hasEnteredRef = useRef(false);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    gsap.to(containerRef.current, {
-      opacity: active ? 1 : 0,
-      duration: 0.4,
-      ease: 'power2.out',
-    });
-  }, [active]);
+  const wasGridRef = useRef(false);
 
   // First entrance: reveal all UI elements in a single delayed block
+  // Return from grid: only re-animate filters (toggle/category/counter stay)
   useEffect(() => {
     if (!active || hasEnteredRef.current) return;
+    const isReturn = wasGridRef.current;
     hasEnteredRef.current = true;
+    wasGridRef.current = false;
 
+    if (isReturn) {
+      // Return from grid — re-animate filters + category + counter
+      gsap.delayedCall(0.15, () => {
+        const filters = filtersRef.current;
+        if (filters) {
+          filters.style.pointerEvents = '';
+          filters.style.visibility = '';
+          const buttons = filters.querySelectorAll('.slider-overlay__filter');
+          buttons.forEach((btn, i) => {
+            revealIn(btn as HTMLElement, { duration: 0.5, delay: i * 0.04 });
+          });
+        }
+
+        // Category + counter back in
+        ['.slider-overlay__category-wrap', '.slider-overlay__counter-wrap'].forEach((sel, i) => {
+          const wrap = document.querySelector(sel) as HTMLElement | null;
+          const inner = wrap?.firstElementChild as HTMLElement | null;
+          if (!wrap || !inner) return;
+          wrap.style.visibility = 'visible';
+          gsap.fromTo(inner,
+            { yPercent: 100 },
+            { yPercent: 0, duration: 0.5, ease: 'power2.out', delay: i * 0.06 },
+          );
+        });
+      });
+      return;
+    }
+
+    // Initial entrance — all elements
     gsap.delayedCall(0.5, () => {
       // Category + counter (wrapper pattern)
       ['.slider-overlay__category-wrap', '.slider-overlay__counter-wrap'].forEach((sel, i) => {
@@ -93,20 +116,19 @@ const SliderOverlay = ({
         );
       });
 
-      // Filters (revealIn per button, same as expand/collapse)
+      // Filters
       const filters = filtersRef.current;
       if (filters) {
+        filters.style.pointerEvents = '';
         const buttons = filters.querySelectorAll('.slider-overlay__filter');
         buttons.forEach((btn, i) => {
           revealIn(btn as HTMLElement, { duration: 0.5, delay: 0.12 + i * 0.04 });
         });
       }
 
-      // Toggle (revealIn)
-      const toggle = toggleRef.current;
-      if (toggle) {
-        revealIn(toggle, { duration: 0.5, delay: 0.12 });
-      }
+      // Mode toggle (in Home.tsx, accessed via DOM)
+      const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+      if (toggle) revealIn(toggle, { duration: 0.5, delay: 0.12 });
     });
 
   }, [active]);
@@ -154,17 +176,47 @@ const SliderOverlay = ({
     }
   }, [currentIndex, project]);
 
-  // Filters, toggle, minimap — single coordinated effect on revealed
+  // ── Transition to grid: animate out filters + category + counter ──
+  useEffect(() => {
+    if (viewMode !== 'transitioning-to-grid') return;
+
+    // Filters out
+    const filters = filtersRef.current;
+    if (filters) {
+      const buttons = filters.querySelectorAll('.slider-overlay__filter');
+      buttons.forEach((btn, i) => {
+        gsap.delayedCall(i * 0.03, () => {
+          revealOut(btn as HTMLElement, { duration: 0.3 });
+        });
+      });
+      filters.style.pointerEvents = 'none';
+    }
+
+    // Category + counter out (wrapper yPercent pattern)
+    ['.slider-overlay__category-wrap', '.slider-overlay__counter-wrap'].forEach((sel) => {
+      const wrap = document.querySelector(sel) as HTMLElement | null;
+      const inner = wrap?.firstElementChild as HTMLElement | null;
+      if (inner) gsap.to(inner, { yPercent: -100, duration: 0.35, ease: 'power3.in' });
+    });
+  }, [viewMode]);
+
+  // ── Reset entrance flag when grid mode is reached ──
+  useEffect(() => {
+    if (viewMode === 'grid') {
+      hasEnteredRef.current = false;
+      wasGridRef.current = true;
+    }
+  }, [viewMode]);
+
+  // Filters, minimap — coordinated effect on revealed
   const filtersSplitRef = useRef<any[]>([]);
-  const toggleSplitRef = useRef<any[]>([]);
   const collapseTimelineRef = useRef<gsap.core.Timeline | null>(null);
   const wasRevealedRef = useRef(false);
 
-  // REVEAL → filters/toggle out, minimap in (on revealComplete)
+  // REVEAL → filters out, minimap in (on revealComplete)
   useEffect(() => {
     const filters = filtersRef.current;
-    const toggle = toggleRef.current;
-    if (!filters || !toggle || !revealed) return;
+    if (!filters || !revealed) return;
 
     // Skip if already hidden (e.g. minimap/arrow navigation between reveals)
     if (filters.style.pointerEvents === 'none') return;
@@ -172,9 +224,7 @@ const SliderOverlay = ({
     if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
 
     filtersSplitRef.current.forEach((s) => s.revert());
-    toggleSplitRef.current.forEach((s) => s.revert());
     filtersSplitRef.current = [];
-    toggleSplitRef.current = [];
 
     const buttons = filters.querySelectorAll('.slider-overlay__filter');
     buttons.forEach((btn, i) => {
@@ -185,9 +235,12 @@ const SliderOverlay = ({
     });
     filters.style.pointerEvents = 'none';
 
-    const { split: s2 } = revealOut(toggle, { duration: 0.3 });
-    toggleSplitRef.current = [s2];
-    toggle.style.pointerEvents = 'none';
+    // Toggle out
+    const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+    if (toggle) {
+      revealOut(toggle, { duration: 0.3 });
+      toggle.style.pointerEvents = 'none';
+    }
   }, [revealed]);
 
   // Minimap IN on revealComplete
@@ -205,16 +258,15 @@ const SliderOverlay = ({
     gsap.to(thumbs, { xPercent: 0, duration: 0.3, ease: 'power3.out', stagger: 0.02 });
   }, [revealComplete]);
 
-  // COLLAPSE → timeline: minimap out THEN filters/toggle in
+  // COLLAPSE → timeline: minimap out THEN filters in
   useEffect(() => {
     const filters = filtersRef.current;
-    const toggle = toggleRef.current;
     const minimap = minimapRef.current;
     const wasRevealed = wasRevealedRef.current;
     wasRevealedRef.current = revealed;
 
     // Only fire on true → false transition, not on initial false
-    if (revealed || !wasRevealed || !filters || !toggle) return;
+    if (revealed || !wasRevealed || !filters) return;
 
     if (collapseTimelineRef.current) { collapseTimelineRef.current.kill(); collapseTimelineRef.current = null; }
 
@@ -243,17 +295,14 @@ const SliderOverlay = ({
     }
     minimapKeepVisibleRef.current = false;
 
-    // Step 2: filters + toggle in (skip if minimap stays visible — we're switching slides)
+    // Step 2: filters in (skip if minimap stays visible — we're switching slides)
     if (keepMinimap) return;
 
     tl.call(() => {
       filtersSplitRef.current.forEach((s) => s.revert());
-      toggleSplitRef.current.forEach((s) => s.revert());
       filtersSplitRef.current = [];
-      toggleSplitRef.current = [];
 
       filters.style.pointerEvents = 'auto';
-      toggle.style.pointerEvents = 'auto';
 
       const buttons = filters.querySelectorAll('.slider-overlay__filter');
       buttons.forEach((btn, i) => {
@@ -261,8 +310,12 @@ const SliderOverlay = ({
         filtersSplitRef.current.push(split);
       });
 
-      const { split: s2 } = revealIn(toggle, { duration: 0.4 });
-      toggleSplitRef.current = [s2];
+      // Toggle back in
+      const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+      if (toggle) {
+        toggle.style.pointerEvents = '';
+        revealIn(toggle, { duration: 0.4 });
+      }
     });
   }, [revealed]);
 
@@ -381,8 +434,6 @@ const SliderOverlay = ({
     <div
       ref={containerRef}
       className="slider-overlay"
-      // Start visible if active is already true (projects loaded after intro)
-      style={{ opacity: active ? 1 : 0 }}
     >
       <div className="slider-overlay__center">
         <div className="slider-overlay__crosshair" />
@@ -431,20 +482,6 @@ const SliderOverlay = ({
         <h2 ref={titleRef} className="slider-overlay__title" />
         <p ref={subtitleRef} className="slider-overlay__subtitle" />
 
-        <button
-          ref={toggleRef}
-          className="slider-overlay__mode-toggle"
-          onClick={onToggleMode}
-          disabled={viewMode.startsWith('transitioning')}
-        >
-          <span className={viewMode === 'slider' || viewMode === 'transitioning-to-grid' ? 'is-active' : ''}>
-            Slider
-          </span>
-          <span className="slider-overlay__mode-divider">/</span>
-          <span className={viewMode === 'grid' || viewMode === 'transitioning-to-slider' ? 'is-active' : ''}>
-            Grid
-          </span>
-        </button>
       </div>
 
       <div ref={minimapRef} className="slider-overlay__minimap">

@@ -147,43 +147,6 @@
   visibility: hidden;
 }
 
-// ── Mode toggle (bottom right) ──────────────────────────────────
-.slider-overlay__mode-toggle {
-  position: absolute;
-  bottom: clamp(12px, 3vw, 48px);
-  right: clamp(12px, 3vw, 48px);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  pointer-events: auto;
-  visibility: hidden;
-  font-family: var(--font-secondary);
-  font-size: clamp(9px, 0.7vw, 12px);
-  letter-spacing: 0.12em;
-  color: rgba(0, 0, 0, 0.25);
-  transition: opacity 0.3s;
-
-  &:disabled {
-    opacity: 0.4;
-    pointer-events: none;
-  }
-
-  span {
-    transition: color 0.3s;
-  }
-
-  .is-active {
-    color: #111;
-  }
-}
-
-.slider-overlay__mode-divider {
-  color: rgba(0, 0, 0, 0.15);
-}
 
 // ── Minimap (vertical, full height, right side) ─────────────────
 .slider-overlay__minimap {

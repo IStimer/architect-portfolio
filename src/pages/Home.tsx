@@ -9,6 +9,7 @@ import OGLCanvas from '../components/home/OGLCanvas';
 import SliderOverlay from '../components/home/SliderOverlay';
 import GridOverlay from '../components/home/GridOverlay';
 import { gsap } from 'gsap';
+import { revealOut } from '../utils/revealText';
 import { lenisService } from '../services/lenisService';
 import { startHeroTransition, getTransitionDirection, finishReverseTransition } from '../services/heroTransition';
 import { preloadProjectChunk } from '../hooks/usePageTransition';
@@ -163,9 +164,12 @@ const Home = () => {
         const catInner = catWrap?.firstElementChild as HTMLElement | null;
         const counterInner = counterWrap?.firstElementChild as HTMLElement | null;
 
+        const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+
         if (crosshair) gsap.to(crosshair, { opacity: 0, duration: 0.3, ease: 'power2.in' });
         if (catInner) gsap.to(catInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
         if (counterInner) gsap.to(counterInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
+        if (toggle) revealOut(toggle, { duration: 0.3 });
 
         // Collect neighbor thumbnail URLs for reverse transition
         const idx = filteredProjects.findIndex(p => p.slug === slug);
@@ -196,10 +200,14 @@ const Home = () => {
   }, []);
 
   const handleCategoryFilter = useCallback((slug: string | null) => {
-    if (viewMode === 'slider' && (slug !== activeCategory)) {
-      // Trigger animated transition: unfiltered→filter, filter→filter, or filter→All
+    if (slug === activeCategory) return;
+    if (viewMode === 'slider') {
       setPendingCategory(slug);
       setViewMode('filter-dezoom');
+    } else if (viewMode === 'grid') {
+      // Grid: apply filter directly (grid rebuilds with new project set)
+      setActiveCategory(slug);
+      setCurrentIndex(0);
     }
   }, [viewMode, activeCategory]);
 
@@ -253,7 +261,7 @@ const Home = () => {
         {!isOpening && (
           <>
             <SliderOverlay
-              active={canvasActive && isSliderVisible && !isFilterDezoom}
+              active={canvasActive && (isSliderVisible || isFilterDezoom)}
               revealed={isRevealed}
               revealComplete={isRevealComplete}
               revealBoundsRef={revealBoundsRef}
@@ -266,7 +274,6 @@ const Home = () => {
               lang={currentLang as 'fr' | 'en'}
               onFilter={handleCategoryFilter}
               viewMode={viewMode}
-              onToggleMode={handleToggleMode}
               totalProjectCount={projects.length}
             />
 
@@ -275,7 +282,28 @@ const Home = () => {
               active={canvasActive && isGridVisible && !isFilterDezoom}
               hoveredSlug={hoveredSlug}
               projects={filteredProjects}
+              categories={categories}
+              activeCategory={activeCategory}
+              lang={currentLang as 'fr' | 'en'}
+              onFilter={handleCategoryFilter}
+              viewMode={viewMode}
             />
+
+            {/* Mode toggle — shared between slider and grid, always visible */}
+            <button
+              className="home-page__mode-toggle"
+              style={{ visibility: 'hidden' }}
+              onClick={handleToggleMode}
+              disabled={viewMode.startsWith('transitioning') || isFilterDezoom}
+            >
+              <span className={viewMode === 'slider' || viewMode === 'transitioning-to-grid' || isFilterDezoom ? 'is-active' : ''}>
+                Slider
+              </span>
+              <span className="home-page__mode-divider">/</span>
+              <span className={viewMode === 'grid' || viewMode === 'transitioning-to-slider' ? 'is-active' : ''}>
+                Grid
+              </span>
+            </button>
           </>
         )}
 
