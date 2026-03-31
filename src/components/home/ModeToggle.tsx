@@ -12,7 +12,7 @@ const ModeToggle = ({ viewMode, onToggle }: ModeToggleProps) => {
 
   return (
     <button
-      className="mode-toggle cursor-target"
+      className="mode-toggle"
       onClick={onToggle}
       disabled={isTransitioning}
       aria-label={`Switch to ${isSlider ? 'grid' : 'slider'} view`}

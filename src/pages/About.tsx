@@ -17,7 +17,7 @@ const About = () => {
       <main className="page-content about-page">
         <h1 className="about-page__title">About</h1>
         <button
-          className="about-page__link cursor-target"
+          className="about-page__link"
           onClick={() => navigateTo('home')}
         >
           Home

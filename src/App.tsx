@@ -8,7 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import LanguageRedirect from './components/LanguageRedirect';
 import LanguageLayout from './components/LanguageLayout';
-import CustomCursor from './components/CustomCursor';
+
 
 const About = lazy(() => import('./pages/About'));
 const Project = lazy(() => import('./pages/Project'));
@@ -56,7 +56,6 @@ function App() {
               wheelMultiplier: 0.8
             }}
           >
-            <CustomCursor />
             <AppRoutes />
           </LenisProvider>
         </AppStateProvider>

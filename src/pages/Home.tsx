@@ -309,7 +309,7 @@ const Home = () => {
 
         <footer className="home-page__footer">
           <button
-            className="home-page__footer-link cursor-target"
+            className="home-page__footer-link"
             onClick={() => navigateTo('about')}
           >
             About

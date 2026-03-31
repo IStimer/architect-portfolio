@@ -67,13 +67,10 @@ export const usePageTransition = () => {
         // ----- Fadeout animation (skip entirely for FLIP — overlay covers) -----
         if (!reduced && !flipActive) {
           const pageContent = document.querySelector(".page-content");
-          const customCursor = document.querySelector(".custom-cursor");
 
           const tl = gsap.timeline();
           if (pageContent)
             tl.to(pageContent, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
-          if (customCursor)
-            tl.to(customCursor, { opacity: 0, duration: TIMINGS.CONTENT_FADE, ease: EASE }, 0);
 
           await tl.then();
           await new Promise<void>((r) =>
@@ -98,9 +95,6 @@ export const usePageTransition = () => {
           });
         }
 
-        // Restore cursor for the new page
-        const cursorAfter = document.querySelector(".custom-cursor");
-        if (cursorAfter) gsap.set(cursorAfter, { opacity: 1 });
       } finally {
         await new Promise<void>((r) =>
           gsap.delayedCall(TIMINGS.NAV_LOCK_RESET, r),
