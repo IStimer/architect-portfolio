@@ -1,6 +1,8 @@
 @use "../abstracts/mixins" as *;
 
 .project-page {
+    --page-px: clamp(16px, 3vw, 48px);
+
     width: 100%;
     min-height: 100vh;
     background: #ffffff;
@@ -12,7 +14,7 @@
 .project-hero {
     position: relative;
     width: 100%;
-    padding: clamp(16px, 3vw, 48px);
+    padding: var(--page-px);
     box-sizing: border-box;
 
     &__target {
@@ -22,9 +24,9 @@
 
     &__header {
         position: absolute;
-        top: clamp(16px, 3vw, 48px);
-        left: clamp(16px, 3vw, 48px);
-        right: clamp(16px, 3vw, 48px);
+        top: var(--page-px);
+        left: var(--page-px);
+        right: var(--page-px);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -48,15 +50,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacer-md);
-    padding: var(--spacer-l) var(--spacer-s);
-    max-width: 1200px;
-    margin: 0 auto;
+    padding: var(--spacer-md) var(--page-px);
     border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 
     @media (min-width: 769px) {
         flex-direction: row;
         gap: var(--spacer-l);
-        padding: var(--spacer-l) var(--spacer-md);
+        padding: var(--spacer-m) var(--page-px);
     }
 
     &__left {
@@ -159,11 +159,10 @@
 // ── Content area ───────────────────────────────────────────
 .project-content {
     position: relative;
-    background: #ffffff;
-    padding: 0 var(--spacer-s);
+    padding: var(--spacer-md) var(--page-px);
 
     @media (min-width: 768px) {
-        padding: var(--spacer-l) var(--spacer-s);
+        padding: var(--spacer-m) var(--page-px);
     }
 
     &__wrapper {

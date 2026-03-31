@@ -116,7 +116,7 @@ const Project = () => {
 
     revealEls.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [project?.slug]);
+  }, [project?.slug, detailProject]);
 
   const animateOut = useCallback(() => {
     if (exitingRef.current) return;
