@@ -6,28 +6,37 @@ import type { SanityCategory } from '../../services/projectService';
 
 interface GridOverlayProps {
   active: boolean;
-  hoveredSlug: string | null;
   projects: ProjectData[];
   categories: SanityCategory[];
   activeCategory: string | null;
   lang: 'fr' | 'en';
   onFilter: (slug: string | null) => void;
   viewMode: ViewMode;
+  revealed: boolean;
+  revealComplete: boolean;
+  revealBoundsRef: React.RefObject<DOMRect | null>;
+  revealedSlug: string | null;
 }
 
 const GridOverlay = ({
-  active, hoveredSlug, projects,
+  active, projects,
   categories, activeCategory, lang, onFilter,
   viewMode,
+  revealed, revealComplete, revealBoundsRef, revealedSlug,
 }: GridOverlayProps) => {
-  const labelRef = useRef<HTMLDivElement>(null);
-  const posRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const filtersRef = useRef<HTMLElement>(null);
   const hasEnteredRef = useRef(false);
 
-  const project = hoveredSlug
-    ? projects.find((p) => p.slug === hoveredSlug)
+  // Title + subtitle refs for reveal
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const splitRefsRef = useRef<any[]>([]);
+  const titleShownRef = useRef(false);
+  const wasRevealedRef = useRef(false);
+
+  const revealedProject = revealedSlug
+    ? projects.find((p) => p.slug === revealedSlug)
     : null;
 
   // Fade in/out container
@@ -76,58 +85,125 @@ const GridOverlay = ({
     }
   }, [viewMode]);
 
-  // Follow cursor with lerp
+  // ── REVEAL: hide filters + crosshair, toggle ──
   useEffect(() => {
-    if (!active) return;
+    if (!revealed) return;
+    const filters = filtersRef.current;
+    if (filters) {
+      const btns = filters.querySelectorAll('.grid-overlay__filter');
+      btns.forEach((btn, i) => {
+        gsap.delayedCall(i * 0.04, () => {
+          revealOut(btn as HTMLElement, { duration: 0.3 });
+        });
+      });
+      filters.style.pointerEvents = 'none';
+    }
 
-    const handleMouseMove = (e: MouseEvent) => {
-      posRef.current = { x: e.clientX, y: e.clientY };
-    };
-    window.addEventListener('mousemove', handleMouseMove);
+    // Hide crosshairs
+    const crosshairs = containerRef.current?.querySelectorAll('.grid-overlay__crosshair');
+    crosshairs?.forEach(el => gsap.to(el, { opacity: 0, duration: 0.3, ease: 'power2.in' }));
 
-    const tick = () => {
-      if (!labelRef.current) return;
-      const rect = labelRef.current.getBoundingClientRect();
-      const currentX = rect.left;
-      const currentY = rect.top;
-      const targetX = posRef.current.x + 20;
-      const targetY = posRef.current.y + 20;
-      const newX = currentX + (targetX - currentX) * 0.15;
-      const newY = currentY + (targetY - currentY) * 0.15;
-      labelRef.current.style.transform = `translate(${newX}px, ${newY}px)`;
-    };
-    gsap.ticker.add(tick);
+    // Hide toggle
+    const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+    if (toggle) {
+      revealOut(toggle, { duration: 0.3 });
+      toggle.style.pointerEvents = 'none';
+    }
+  }, [revealed]);
 
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      gsap.ticker.remove(tick);
-    };
-  }, [active]);
-
-  // Show/hide label
+  // ── REVEAL COMPLETE: show title + subtitle ──
   useEffect(() => {
-    if (!labelRef.current) return;
-    gsap.to(labelRef.current, {
-      opacity: project ? 1 : 0,
-      scale: project ? 1 : 0.9,
-      duration: 0.25,
-      ease: 'power2.out',
-    });
-  }, [project]);
+    const titleEl = titleRef.current;
+    const subEl = subtitleRef.current;
+    if (!titleEl || !subEl || !revealComplete || !revealedProject || titleShownRef.current) return;
+
+    titleShownRef.current = true;
+    splitRefsRef.current.forEach(s => s.revert());
+    splitRefsRef.current = [];
+
+    titleEl.textContent = revealedProject.title;
+    subEl.textContent = revealedProject.subtitle ?? '';
+
+    const { split: s1 } = revealIn(titleEl, { duration: 0.6 });
+    const { split: s2 } = revealIn(subEl, { duration: 0.6, delay: 0.1 });
+    splitRefsRef.current = [s1, s2];
+  }, [revealComplete, revealedProject]);
+
+  // ── Position title + subtitle relative to reveal bounds ──
+  useEffect(() => {
+    if (!revealed) return;
+    let raf: number;
+    const update = () => {
+      const b = revealBoundsRef.current;
+      const tw = titleRef.current;
+      const sw = subtitleRef.current;
+      if (b && tw && sw) {
+        tw.style.left = `${b.x}px`;
+        tw.style.bottom = `${window.innerHeight - b.y + 8}px`;
+        sw.style.right = `${window.innerWidth - b.x - b.width}px`;
+        sw.style.top = `${b.y + b.height + 8}px`;
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [revealed, revealBoundsRef]);
+
+  // ── COLLAPSE: title/subtitle out, filters + crosshair back ──
+  useEffect(() => {
+    const titleEl = titleRef.current;
+    const subEl = subtitleRef.current;
+    const wasRevealed = wasRevealedRef.current;
+    wasRevealedRef.current = revealed;
+
+    if (revealed || !wasRevealed) return;
+
+    // Title + subtitle out
+    if (titleEl && subEl && titleShownRef.current) {
+      titleShownRef.current = false;
+      splitRefsRef.current.forEach(s => s.revert());
+      splitRefsRef.current = [];
+
+      const { split: s1 } = revealOut(titleEl, {
+        duration: 0.3,
+        onComplete: () => { titleEl.style.visibility = 'hidden'; },
+      });
+      const { split: s2 } = revealOut(subEl, {
+        duration: 0.3,
+        onComplete: () => { subEl.style.visibility = 'hidden'; },
+      });
+      splitRefsRef.current = [s1, s2];
+    }
+
+    // Filters back
+    const filters = filtersRef.current;
+    if (filters) {
+      filters.style.pointerEvents = 'auto';
+      const btns = filters.querySelectorAll('.grid-overlay__filter');
+      btns.forEach((btn, i) => {
+        revealIn(btn as HTMLElement, { duration: 0.4, delay: 0.15 + i * 0.04 });
+      });
+    }
+
+    // Crosshairs back
+    const crosshairs = containerRef.current?.querySelectorAll('.grid-overlay__crosshair');
+    crosshairs?.forEach(el => gsap.to(el, { opacity: 1, duration: 0.4, delay: 0.15, ease: 'power2.out' }));
+
+    // Toggle back
+    const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+    if (toggle) {
+      toggle.style.pointerEvents = '';
+      revealIn(toggle, { duration: 0.4, delay: 0.15 });
+    }
+  }, [revealed]);
 
   return (
     <div ref={containerRef} className="grid-overlay" style={{ opacity: active ? 1 : 0 }}>
       <div className="grid-overlay__crosshair grid-overlay__crosshair--h" />
       <div className="grid-overlay__crosshair grid-overlay__crosshair--v" />
 
-      <div ref={labelRef} className="grid-overlay__label" style={{ opacity: 0 }}>
-        {project && (
-          <>
-            <span className="grid-overlay__title">{project.title}</span>
-            <span className="grid-overlay__category">{project.category}</span>
-          </>
-        )}
-      </div>
+      <h2 ref={titleRef} className="grid-overlay__reveal-title" />
+      <p ref={subtitleRef} className="grid-overlay__reveal-subtitle" />
 
       {categories.length > 0 && (
         <nav ref={filtersRef} className="grid-overlay__filters">

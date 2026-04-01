@@ -22,7 +22,7 @@ interface OGLCanvasProps {
   onIndexChange: (index: number) => void;
   onHover: (slug: string | null) => void;
   onNavigate: (slug: string) => void;
-  onRevealChange?: (revealed: boolean, complete: boolean, keepMinimap?: boolean) => void;
+  onRevealChange?: (revealed: boolean, complete: boolean, extra?: boolean | string | null) => void;
   revealBoundsRef?: React.MutableRefObject<DOMRect | null>;
   onTransitionComplete: (target: 'slider' | 'grid') => void;
   onFilterDezoomComplete: () => void;
@@ -150,6 +150,8 @@ const OGLCanvas = ({
     texturesLoaded,
     onHover: handleGridHover,
     onNavigate: handleGridNavigate,
+    onRevealChange,
+    revealBoundsRef,
     skipEnterAnimation: viewMode === 'transitioning-to-slider',
     initialScrollTo: gridScrollAnchorRef.current ?? undefined,
     markVisible,
@@ -179,8 +181,9 @@ const OGLCanvas = ({
   }, []);
 
   const getRevealedScreenRect = useCallback(() => {
+    if (gridActive) return gridHandle.getRevealedScreenRect();
     return sliderHandle.getRevealedScreenRect();
-  }, [sliderHandle]);
+  }, [sliderHandle, gridHandle, gridActive]);
 
   const selectSlide = useCallback((index: number) => {
     sliderHandle.selectSlide(index);

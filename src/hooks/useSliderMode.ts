@@ -36,7 +36,7 @@ interface SliderModeProps {
   onRevealChange?: (
     revealed: boolean,
     complete: boolean,
-    keepMinimap?: boolean,
+    extra?: boolean | string | null,
   ) => void;
   revealBoundsRef?: React.MutableRefObject<DOMRect | null>;
   jumpToRef?: React.MutableRefObject<((index: number) => void) | null>;

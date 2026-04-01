@@ -30,13 +30,14 @@ const Home = () => {
     const saved = sessionStorage.getItem('sliderIndex');
     return saved ? parseInt(saved, 10) : 0;
   });
-  const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
+  const [, setHoveredSlug] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(!state.introCompleted);
   const [isRevealed, setIsRevealed] = useState(false);
   const [isRevealComplete, setIsRevealComplete] = useState(false);
+  const [revealedSlug, setRevealedSlug] = useState<string | null>(null);
   const revealBoundsRef = useRef<DOMRect | null>(null);
 
   const showIntro = showIntroOverlay;
@@ -126,10 +127,13 @@ const Home = () => {
 
   const keepMinimapRef = useRef(false);
 
-  const handleRevealChange = useCallback((revealed: boolean, complete: boolean, keepMinimap?: boolean) => {
+  const handleRevealChange = useCallback((revealed: boolean, complete: boolean, extra?: boolean | string | null) => {
     setIsRevealed(revealed);
     setIsRevealComplete(revealed && complete);
-    if (keepMinimap) keepMinimapRef.current = true;
+    // Slider passes keepMinimap (boolean), grid passes slug (string)
+    if (typeof extra === 'boolean' && extra) keepMinimapRef.current = true;
+    if (typeof extra === 'string') setRevealedSlug(extra);
+    if (!revealed) setRevealedSlug(null);
   }, []);
 
   const handleTransitionComplete = useCallback((target: 'slider' | 'grid') => {
@@ -156,20 +160,26 @@ const Home = () => {
         // Trigger UI out animations in parallel with the morph
         setIsRevealed(false);
         setIsRevealComplete(false);
+        setRevealedSlug(null);
 
-        // Animate out elements not handled by the reveal effects
-        const crosshair = document.querySelector('.slider-overlay__crosshair') as HTMLElement | null;
-        const catWrap = document.querySelector('.slider-overlay__category-wrap') as HTMLElement | null;
-        const counterWrap = document.querySelector('.slider-overlay__counter-wrap') as HTMLElement | null;
-        const catInner = catWrap?.firstElementChild as HTMLElement | null;
-        const counterInner = counterWrap?.firstElementChild as HTMLElement | null;
+        if (viewMode === 'grid' || viewMode === 'transitioning-to-slider') {
+          // Grid mode: crosshair + toggle are already hidden during reveal
+          // Title/subtitle animate out via GridOverlay's collapse effect
+        } else {
+          // Slider mode: animate out slider-specific elements
+          const crosshair = document.querySelector('.slider-overlay__crosshair') as HTMLElement | null;
+          const catWrap = document.querySelector('.slider-overlay__category-wrap') as HTMLElement | null;
+          const counterWrap = document.querySelector('.slider-overlay__counter-wrap') as HTMLElement | null;
+          const catInner = catWrap?.firstElementChild as HTMLElement | null;
+          const counterInner = counterWrap?.firstElementChild as HTMLElement | null;
 
-        const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
+          const toggle = document.querySelector('.home-page__mode-toggle') as HTMLElement | null;
 
-        if (crosshair) gsap.to(crosshair, { opacity: 0, duration: 0.3, ease: 'power2.in' });
-        if (catInner) gsap.to(catInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
-        if (counterInner) gsap.to(counterInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
-        if (toggle) revealOut(toggle, { duration: 0.3 });
+          if (crosshair) gsap.to(crosshair, { opacity: 0, duration: 0.3, ease: 'power2.in' });
+          if (catInner) gsap.to(catInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
+          if (counterInner) gsap.to(counterInner, { yPercent: 100, duration: 0.3, ease: 'power3.in' });
+          if (toggle) revealOut(toggle, { duration: 0.3 });
+        }
 
         // Collect neighbor thumbnail URLs for reverse transition
         const idx = filteredProjects.findIndex(p => p.slug === slug);
@@ -188,7 +198,7 @@ const Home = () => {
         navigateTo('project', { slug });
       }
     },
-    [navigateTo, filteredProjects]
+    [navigateTo, filteredProjects, viewMode]
   );
 
   const handleJumpTo = useCallback((index: number) => {
@@ -262,8 +272,8 @@ const Home = () => {
           <>
             <SliderOverlay
               active={canvasActive && (isSliderVisible || isFilterDezoom)}
-              revealed={isRevealed}
-              revealComplete={isRevealComplete}
+              revealed={isRevealed && isSliderVisible}
+              revealComplete={isRevealComplete && isSliderVisible}
               revealBoundsRef={revealBoundsRef}
               keepMinimapRef={keepMinimapRef}
               currentIndex={currentIndex}
@@ -280,13 +290,16 @@ const Home = () => {
 
             <GridOverlay
               active={canvasActive && isGridVisible && !isFilterDezoom}
-              hoveredSlug={hoveredSlug}
               projects={filteredProjects}
               categories={categories}
               activeCategory={activeCategory}
               lang={currentLang as 'fr' | 'en'}
               onFilter={handleCategoryFilter}
               viewMode={viewMode}
+              revealed={isRevealed && isGridVisible}
+              revealComplete={isRevealComplete && isGridVisible}
+              revealBoundsRef={revealBoundsRef}
+              revealedSlug={revealedSlug}
             />
 
             {/* Mode toggle — shared between slider and grid, always visible */}
