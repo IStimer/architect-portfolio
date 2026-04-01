@@ -6,6 +6,7 @@ import type { ProjectData } from '../types';
 import { TextureTier, getPlaceholderTexture } from './useTextureManager';
 import { getSharedPlane } from '../services/sharedGeometry';
 import type { TextureEntry } from './useTextureManager';
+import { hasPendingTransition } from '../services/heroTransition';
 import vertexShader from '../shaders/grid/vertex.glsl';
 import fragmentShader from '../shaders/grid/fragment.glsl';
 
@@ -378,6 +379,7 @@ export const useInfiniteGridMode = ({
     // ── Wheel ──
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      if (hasPendingTransition()) return;
       targetScrollRef.current.x += e.deltaX * 0.003;
       targetScrollRef.current.y += e.deltaY * 0.003;
     };
@@ -385,6 +387,7 @@ export const useInfiniteGridMode = ({
 
     // ── Drag ──
     const handlePointerDown = (e: PointerEvent) => {
+      if (hasPendingTransition()) return;
       isDraggingRef.current = true;
       velocityRef.current = { x: 0, y: 0 };
       dragStartRef.current = { x: e.clientX, y: e.clientY };
