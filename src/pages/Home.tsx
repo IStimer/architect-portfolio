@@ -39,6 +39,8 @@ const Home = () => {
   const [isRevealComplete, setIsRevealComplete] = useState(false);
   const [revealedSlug, setRevealedSlug] = useState<string | null>(null);
   const revealBoundsRef = useRef<DOMRect | null>(null);
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
 
   const showIntro = showIntroOverlay;
   const canvasActive = !showIntro || openingActive;
@@ -162,7 +164,7 @@ const Home = () => {
         setIsRevealComplete(false);
         setRevealedSlug(null);
 
-        if (viewMode === 'grid' || viewMode === 'transitioning-to-slider') {
+        if (viewModeRef.current === 'grid' || viewModeRef.current === 'transitioning-to-slider') {
           // Grid mode: crosshair + toggle are already hidden during reveal
           // Title/subtitle animate out via GridOverlay's collapse effect
         } else {
@@ -198,7 +200,7 @@ const Home = () => {
         navigateTo('project', { slug });
       }
     },
-    [navigateTo, filteredProjects, viewMode]
+    [navigateTo, filteredProjects]
   );
 
   const handleJumpTo = useCallback((index: number) => {
@@ -272,8 +274,8 @@ const Home = () => {
           <>
             <SliderOverlay
               active={canvasActive && (isSliderVisible || isFilterDezoom)}
-              revealed={isRevealed && isSliderVisible}
-              revealComplete={isRevealComplete && isSliderVisible}
+              revealed={isRevealed && (isSliderVisible || isFilterDezoom)}
+              revealComplete={isRevealComplete && (isSliderVisible || isFilterDezoom)}
               revealBoundsRef={revealBoundsRef}
               keepMinimapRef={keepMinimapRef}
               currentIndex={currentIndex}

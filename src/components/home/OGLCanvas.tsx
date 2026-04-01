@@ -180,10 +180,15 @@ const OGLCanvas = ({
     jumpToRef.current?.(index);
   }, []);
 
+  const gridActiveRef = useRef(gridActive);
+  gridActiveRef.current = gridActive;
+  const gridHandleRef = useRef(gridHandle);
+  gridHandleRef.current = gridHandle;
+
   const getRevealedScreenRect = useCallback(() => {
-    if (gridActive) return gridHandle.getRevealedScreenRect();
+    if (gridActiveRef.current) return gridHandleRef.current.getRevealedScreenRect();
     return sliderHandle.getRevealedScreenRect();
-  }, [sliderHandle, gridHandle, gridActive]);
+  }, [sliderHandle]);
 
   const selectSlide = useCallback((index: number) => {
     sliderHandle.selectSlide(index);
