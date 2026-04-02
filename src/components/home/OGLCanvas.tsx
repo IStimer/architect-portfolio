@@ -187,12 +187,12 @@ const OGLCanvas = ({
 
   const getRevealedScreenRect = useCallback(() => {
     if (gridActiveRef.current) return gridHandleRef.current.getRevealedScreenRect();
-    return sliderHandle.getRevealedScreenRect();
-  }, [sliderHandle]);
+    return sliderHandleRef.current!.getRevealedScreenRect();
+  }, []);
 
   const selectSlide = useCallback((index: number) => {
-    sliderHandle.selectSlide(index);
-  }, [sliderHandle]);
+    sliderHandleRef.current!.selectSlide(index);
+  }, []);
 
   // Attach to ref so parent can call it (via imperative handle pattern)
   const containerCallbackRef = useCallback(

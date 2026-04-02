@@ -116,6 +116,7 @@ export const useOpeningAnimation = ({
     const N = projects.length;
     const targetIndex = currentIndexRef.current;
 
+    let completeRafId: number;
     handoffRef.current = null;
 
     // ── Dimensions at Z=5 ──
@@ -412,12 +413,6 @@ export const useOpeningAnimation = ({
     const phase3Start = phase2End + 0.3;
     tl.addLabel("phase3", phase3Start);
 
-    // DEBUG: log column distributions and positions
-    console.group("[Opening] Phase 3 — column distributions");
-    for (let c = 0; c < NUM_COLS; c++) {
-      const colProjects = projectsByCol[c];
-      console.log(`Col ${c}: projects [${colProjects.join(",")}]`);
-    }
     // CONVERGE — identical to filter dezoom goingToAll:
     // addBatchPositionTween + circular slider Y + distortion 0.8
     const convergeItems: BatchItem[] = allMeshes.map((cm) => {
@@ -517,7 +512,7 @@ export const useOpeningAnimation = ({
         });
 
         window.dispatchEvent(new Event("resize"));
-        requestAnimationFrame(() => {
+        completeRafId = requestAnimationFrame(() => {
           onCompleteRef.current();
         });
       },
@@ -527,6 +522,7 @@ export const useOpeningAnimation = ({
 
     // Cleanup
     cleanupRef.current = () => {
+      cancelAnimationFrame(completeRafId);
       tl.kill();
       if (!isComplete) {
         allMeshes.forEach((cm) => cm.mesh.setParent(null));

@@ -1,5 +1,3 @@
-"use client";
-
 import { useContext } from "react";
 import { LenisContext, type LenisContextValue } from "../providers/LenisProvider";
 

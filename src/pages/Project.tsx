@@ -34,8 +34,8 @@ const Project = () => {
   const nextProject = useMemo(() => {
     if (!listProject || projects.length === 0) return null;
     const currentIndex = projects.findIndex(p => p.slug === slug);
-    const nextSlug = projects[(currentIndex + 1) % projects.length].slug;
-    return projects.find(p => p.slug === nextSlug) ?? null;
+    if (currentIndex === -1) return null;
+    return projects[(currentIndex + 1) % projects.length] ?? null;
   }, [slug, projects, listProject]);
 
   // Fetch detail to get editorialContent (not in list query)

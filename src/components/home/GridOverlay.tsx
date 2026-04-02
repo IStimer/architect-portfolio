@@ -133,11 +133,13 @@ const GridOverlay = ({
   useEffect(() => {
     if (!revealed) return;
     let raf: number;
+    let lastX = 0, lastY = 0, lastW = 0, lastH = 0;
     const update = () => {
       const b = revealBoundsRef.current;
       const tw = titleRef.current;
       const sw = subtitleRef.current;
-      if (b && tw && sw) {
+      if (b && tw && sw && (b.x !== lastX || b.y !== lastY || b.width !== lastW || b.height !== lastH)) {
+        lastX = b.x; lastY = b.y; lastW = b.width; lastH = b.height;
         tw.style.left = `${b.x}px`;
         tw.style.bottom = `${window.innerHeight - b.y + 8}px`;
         sw.style.right = `${window.innerWidth - b.x - b.width}px`;

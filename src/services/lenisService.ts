@@ -117,7 +117,7 @@ class LenisService {
             return this.instance;
 
         } catch (error) {
-            console.error('Error initializing Lenis:', error);
+            if (import.meta.env.DEV) console.error('Error initializing Lenis:', error);
             return null;
         }
     }
@@ -134,7 +134,7 @@ class LenisService {
                 this.instance = null;
             }
         } catch (error) {
-            console.error('Error destroying Lenis:', error);
+            if (import.meta.env.DEV) console.error('Error destroying Lenis:', error);
         }
     }
 
@@ -147,7 +147,7 @@ class LenisService {
 
             this.instance.scrollTo(target, options);
         } catch (error) {
-            console.error('Error scrollTo:', error);
+            if (import.meta.env.DEV) console.error('Error scrollTo:', error);
             this.nativeScrollTo(target);
         }
     }
@@ -165,7 +165,7 @@ class LenisService {
                 target.scrollIntoView({ behavior: 'smooth' });
             }
         } catch (error) {
-            console.error('Error native scroll:', error);
+            if (import.meta.env.DEV) console.error('Error native scroll:', error);
         }
     }
 
@@ -175,7 +175,7 @@ class LenisService {
                 this.instance.stop();
             }
         } catch (error) {
-            console.error('Error stopping Lenis:', error);
+            if (import.meta.env.DEV) console.error('Error stopping Lenis:', error);
         }
     }
 
@@ -185,7 +185,7 @@ class LenisService {
                 this.instance.start();
             }
         } catch (error) {
-            console.error('Error starting Lenis:', error);
+            if (import.meta.env.DEV) console.error('Error starting Lenis:', error);
         }
     }
 
@@ -203,7 +203,7 @@ class LenisService {
                 this.instance.resize();
             }
         } catch (error) {
-            console.error('Error resizing Lenis:', error);
+            if (import.meta.env.DEV) console.error('Error resizing Lenis:', error);
         }
     }
 }

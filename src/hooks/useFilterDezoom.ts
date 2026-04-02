@@ -292,27 +292,28 @@ export const useFilterDezoom = ({
     });
 
     let tickCounter = 0;
+    const pendingIndices = new Set<number>();
+    allMeshes.forEach((cm, i) => { if (!syncedWidths.has(cm.slug) || syncedWidths.get(cm.slug) === 0) pendingIndices.add(i); });
     const textureTick = () => {
-      if (isComplete || pendingSyncs <= 0) {
+      if (isComplete || pendingIndices.size === 0) {
         gsap.ticker.remove(textureTick);
         return;
       }
       // Throttle: check every 5th frame (textures loading isn't time-critical)
       if (++tickCounter % 5 !== 0) return;
       const curTextures = texturesRef.current;
-      for (let j = 0; j < allMeshes.length; j++) {
+      for (const j of pendingIndices) {
         const cm = allMeshes[j];
-        const prev = syncedWidths.get(cm.slug) ?? 0;
         const entry = curTextures.get(cm.slug);
-        if (!entry || entry.width === prev) continue;
+        if (!entry || entry.width <= 4) continue;
         syncedWidths.set(cm.slug, entry.width);
         entry.texture.needsUpdate = true;
         cm.program.uniforms.uResolution.value = [entry.width, entry.height];
-        if (prev === 0) pendingSyncs--;
         cm.program.uniforms.uTextureReady.value = 1.0;
+        pendingIndices.delete(j);
       }
     };
-    if (pendingSyncs > 0) gsap.ticker.add(textureTick);
+    if (pendingIndices.size > 0) gsap.ticker.add(textureTick);
 
     // ── Frustum culling tick — skip draw calls for off-screen meshes ──
     const cullTick = () => {

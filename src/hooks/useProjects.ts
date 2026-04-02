@@ -50,7 +50,7 @@ export function useProjects(lang: 'fr' | 'en' = 'fr'): UseProjectsResult {
         setCategories(fetchedCategories);
       } catch (err) {
         if (cancelled) return;
-        console.warn('Sanity fetch failed:', err);
+        if (import.meta.env.DEV) console.warn('Sanity fetch failed:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch projects');
       } finally {
         if (!cancelled) setLoading(false);
